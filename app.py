@@ -31,31 +31,65 @@ div[class*="viewerBadge"] {display: none !important;}
 [data-testid="stSidebarCollapseButton"] {display: none !important;}
 [data-testid="collapsedControl"] {display: none !important;}
 
-/* 3. 頂部橫向導航列膠囊按鈕美化 (電腦居中，手機自動折行適配) */
+/* 3. 頂部橫向導航列：100% 滿版填滿、按鈕放大、內容完全置中 */
+div[data-testid="stRadio"] {
+    width: 100% !important;
+}
+
 div[data-testid="stRadio"] > div {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 10px;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.03);
-    padding: 10px 14px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    margin-bottom: 24px;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    padding: 10px 14px !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    margin-bottom: 26px !important;
 }
+
+/* 讓 5 個按鈕自動平分 100% 寬度，填滿左至右，內容水平垂直置中 */
 div[data-testid="stRadio"] label {
-    background-color: rgba(255, 255, 255, 0.05);
-    padding: 8px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    transition: all 0.2s ease;
+    flex: 1 1 0 !important;
+    min-width: 160px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    text-align: center !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    padding: 14px 18px !important;
+    border-radius: 10px !important;
+    cursor: pointer !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    transition: all 0.25s ease !important;
 }
+
+/* 按鈕文字加大、加粗 */
+div[data-testid="stRadio"] label p {
+    font-size: 1.15rem !important;
+    font-weight: 600 !important;
+    margin: 0 !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* 滑鼠懸停效果 */
 div[data-testid="stRadio"] label:hover {
-    background-color: rgba(0, 230, 118, 0.15);
-    border-color: #00E676;
+    background-color: rgba(0, 230, 118, 0.15) !important;
+    border-color: #00E676 !important;
+    transform: translateY(-1px) !important;
 }
+
+/* 當前選中狀態高亮 (亮綠色外框與文字) */
+div[data-testid="stRadio"] label:has(input:checked) {
+    background-color: rgba(0, 230, 118, 0.18) !important;
+    border-color: #00E676 !important;
+}
+div[data-testid="stRadio"] label:has(input:checked) p {
+    color: #00E676 !important;
+    font-weight: 700 !important;
+}
+
 </style>
 """
 st.markdown(top_nav_style, unsafe_allow_html=True)

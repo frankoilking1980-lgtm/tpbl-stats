@@ -16,17 +16,32 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ----------------- 隱藏右上角選單與 GitHub 原始碼按鈕 -----------------
+# ----------------- 徹底隱藏頂部工具列與側邊欄收合按鈕 -----------------
 hide_streamlit_style = """
 <style>
-/* 隱藏右上角漢堡選單與 Manage app 按鈕 */
-#MainMenu {visibility: hidden;}
-/* 隱藏頂部工具列 (包含 Fork/View app source 圖示) */
-[data-testid="stToolbar"] {visibility: hidden;}
-.stDeployButton {display: none;}
-header[data-testid="stHeader"] {background: rgba(0,0,0,0); height: 0rem;}
-/* 隱藏頁尾浮水印 */
-footer {visibility: hidden;}
+/* 1. 徹底拔除頂部 Header (包含三點選單、GitHub 原始碼、Deploy 按鈕) */
+header, [data-testid="stHeader"] {
+    display: none !important;
+}
+
+/* 2. 徹底隱藏側邊欄的收合按鈕 (<<)，讓左側選單永久鎖定展開不遺失 */
+[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+}
+[data-testid="stSidebarHeader"] button {
+    display: none !important;
+}
+button[kind="header"] {
+    display: none !important;
+}
+
+/* 3. 徹底隱藏原生頁尾與嵌入底部白框 */
+footer, [data-testid="stEmbedFooter"] {
+    display: none !important;
+}
+div[class*="viewerBadge"] {
+    display: none !important;
+}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)

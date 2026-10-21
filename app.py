@@ -16,6 +16,21 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ----------------- 隱藏右上角選單與 GitHub 原始碼按鈕 -----------------
+hide_streamlit_style = """
+<style>
+/* 隱藏右上角漢堡選單與 Manage app 按鈕 */
+#MainMenu {visibility: hidden;}
+/* 隱藏頂部工具列 (包含 Fork/View app source 圖示) */
+[data-testid="stToolbar"] {visibility: hidden;}
+.stDeployButton {display: none;}
+header[data-testid="stHeader"] {background: rgba(0,0,0,0); height: 0rem;}
+/* 隱藏頁尾浮水印 */
+footer {visibility: hidden;}
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 # ----------------- 時間與數值格式化工具函式 -----------------
 def clean_time_display(val):
     """將被 Pandas / Excel 誤判為 Timedelta/天數的時間，校正還原回正常的 分:秒 (MM:SS)"""

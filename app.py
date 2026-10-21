@@ -61,7 +61,7 @@ st.sidebar.caption("Google Sheets 即時同步數據庫")
 
 # 填入你那張 487KB 總表的公開 CSV 連結
 # 格式為：https://docs.google.com/spreadsheets/d/{你的ID}/export?format=csv&gid=0
-default_summary_url = "https://docs.google.com/spreadsheets/d/1CwoYQcJmVisAvykB2NMZZtUnXKxb0R4-l5BiIA4SHT4/export?format=csv&gid=0"
+default_summary_url = "https://docs.google.com/spreadsheets/d/1OVTYlmzVYi2UF5-YjK9uoon-qqZuKI8kQwnq-VzZTe4/edit?gid=0#gid=0"
 
 with st.sidebar.expander("⚙️ 總表 CSV 連結設定", expanded=False):
     summary_csv_url = st.text_input("7隊戰力總表 CSV URL", value=default_summary_url)

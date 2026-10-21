@@ -15,10 +15,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 解決 Matplotlib 中文字體顯示問題（若有備用靜態繪圖需求）
-plt.rcParams['font.sans-serif'] = ['Noto Sans CJK JP', 'DejaVu Sans', 'Arial Unicode MS']
-plt.rcParams['axes.unicode_minus'] = False
-
 # ----------------- 時間校正與安全工具函式 -----------------
 def clean_time_display(val):
     """將被 Pandas / Excel 誤判為 Timedelta/天數的時間，校正還原回正常的 分:秒 (MM:SS)"""
@@ -91,6 +87,24 @@ def find_file_fuzzy(keyword):
     for fname in os.listdir('.'):
         fname_lower = fname.lower()
         if keyword_clean in fname_lower and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
+            return fname
+    return None
+
+def find_team_file(team_name):
+    """精準多關鍵字匹配各隊專屬檔案"""
+    team_keywords = {
+        "福爾摩沙夢想家": ["夢想家", "福爾摩沙"],
+        "新北國王": ["國王"],
+        "高雄全家海神": ["海神", "全家"],
+        "新北中信特攻": ["特攻", "中信"],
+        "臺北台新戰神": ["戰神", "台新"],
+        "桃園台啤永豐雲豹": ["雲豹", "台啤", "永豐"],
+        "新竹御嵿攻城獅": ["攻城獅", "攻城", "御嵿"]
+    }
+    kws = team_keywords.get(team_name, [team_name])
+    for fname in os.listdir('.'):
+        fname_lower = fname.lower()
+        if any(kw.lower() in fname_lower for kw in kws) and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
             return fname
     return None
 
@@ -318,9 +332,9 @@ elif nav_selection == MENU_SCATTER:
                 df_players[col] = pd.to_numeric(df_players[col].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
 
         # 自動百分比校正（若小於 1 則自動乘以 100）
-        if df_players['USG%'].mean() > 0 and df_players['USG%'].mean() < 1.0:
+        if 'USG%' in df_players.columns and df_players['USG%'].mean() > 0 and df_players['USG%'].mean() < 1.0:
             df_players['USG%'] = df_players['USG%'] * 100.0
-        if df_players['TS%'].mean() > 0 and df_players['TS%'].mean() < 1.0:
+        if 'TS%' in df_players.columns and df_players['TS%'].mean() > 0 and df_players['TS%'].mean() < 1.0:
             df_players['TS%'] = df_players['TS%'] * 100.0
 
         # 過濾控制項
@@ -398,9 +412,8 @@ elif nav_selection == MENU_PBP:
     team_options = ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
     selected_team = st.selectbox("選擇要深入分析的球隊", team_options)
 
-    # 模糊尋找該隊伍的專屬 Excel 檔案
-    kw = selected_team.replace("福爾摩沙", "").replace("新北", "").replace("高雄全家", "").replace("臺北台新", "").replace("桃園台啤永豐", "").replace("新竹御嵿", "")
-    target_file = find_file_fuzzy(kw) or find_file_fuzzy(selected_team)
+    # 匹配各隊專屬檔案
+    target_file = find_team_file(selected_team) or find_file_fuzzy(selected_team)
 
     if target_file:
         blocks, box_df = extract_pbp_blocks(target_file)

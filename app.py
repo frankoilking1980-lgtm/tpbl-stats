@@ -16,27 +16,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ----------------- 徹底隱藏頁首、頁尾與嵌入白框 -----------------
-hide_streamlit_style = """
-<style>
-/* 隱藏原生選單與按鈕 */
-#MainMenu {visibility: hidden; display: none !important;}
-header {visibility: hidden; display: none !important;}
-[data-testid="stHeader"] {display: none !important;}
-[data-testid="stToolbar"] {display: none !important;}
-[data-testid="stDecoration"] {display: none !important;}
-[data-testid="stStatusWidget"] {display: none !important;}
-
-/* 隱藏原生頁尾與嵌入模式底部白條 (Built with Streamlit) */
-footer {visibility: hidden; display: none !important;}
-[data-testid="stEmbedFooter"] {display: none !important;}
-div[class*="viewerBadge"] {display: none !important;}
-div[class*="stEmbedFooter"] {display: none !important;}
-iframe {border: none !important;}
-</style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
 # ----------------- 隱藏右上角選單與 GitHub 原始碼按鈕 -----------------
 hide_streamlit_style = """
 <style>

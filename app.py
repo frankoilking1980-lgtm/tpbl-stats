@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-/* ----------------- 頂部現代風格與全端隱藏 CSS ----------------- */
+#----------------- 頂部現代風格與全端隱藏 CSS ----------------- 
 top_nav_style = """
 <style>
 /* 1. 徹底隱藏原生 Header、工具列、頁尾與嵌入白條 */

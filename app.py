@@ -21,7 +21,6 @@ def clean_time_display(val):
     if pd.isna(val):
         return ""
         
-    # 若被讀成 Timedelta 物件 (如 42 hours 41 mins 被自動進位為 1 day 18:41:00)
     if isinstance(val, (pd.Timedelta, datetime.timedelta)):
         tot_sec = val.total_seconds()
         orig_mins = int(tot_sec // 3600)
@@ -30,7 +29,6 @@ def clean_time_display(val):
     
     val_str = str(val).strip()
     
-    # 處理字串型態的 "1 day, 18:41:00" 或 "2 days, 22:46:00"
     m_day = re.match(r'(\d+)\s*days?,?\s*(\d+):(\d+)(?::(\d+))?', val_str)
     if m_day:
         days = int(m_day.group(1))
@@ -40,12 +38,10 @@ def clean_time_display(val):
         orig_secs = mins
         return f"{orig_mins:02d}:{orig_secs:02d}"
         
-    # 處理 Google Sheets 匯出的 ISO 時間字串 (如 PT35H44M00.000S)
     m_pt = re.match(r'PT(\d+)H(\d+)M', val_str)
     if m_pt:
         return f"{int(m_pt.group(1)):02d}:{int(m_pt.group(2)):02d}"
     
-    # 處理 "42:41:00" 或 "10:08:00" (去除末尾多餘的 :00 秒數)
     m_hms = re.match(r'^(\d+):(\d+):00$', val_str)
     if m_hms:
         return f"{int(m_hms.group(1)):02d}:{int(m_hms.group(2)):02d}"
@@ -108,7 +104,7 @@ def find_team_file(team_name):
             return fname
     return None
 
-# ----------------- 總表拆解解析 -----------------
+# ----------------- 總表拆解解析 (精確定位標題列) -----------------
 def parse_summary_sheet(filepath):
     try:
         if filepath.lower().endswith('.csv'):
@@ -121,60 +117,62 @@ def parse_summary_sheet(filepath):
     if df_raw is None or df_raw.empty:
         return pd.DataFrame(), pd.DataFrame()
 
-    header_a_idx = None
-    header_b_idx = None
+    row_block_a_title = None
+    row_block_b_title = None
 
+    # 精確鎖定包含【區塊 A】與【區塊 B】的大標題列
     for idx, row in df_raw.iterrows():
         row_str = " ".join([str(v) for v in row.values if pd.notna(v)])
-        if "團隊總得分" in row_str or "百回合進攻效率" in row_str:
-            header_a_idx = idx
-        elif "高球權核心" in row_str or "戰力短評" in row_str:
-            header_b_idx = idx
+        if "【區塊 A" in row_str or "區塊 A" in row_str:
+            row_block_a_title = idx
+        elif "【區塊 B" in row_str or "區塊 B" in row_str:
+            row_block_b_title = idx
 
-    if header_a_idx is not None:
-        end_a = header_b_idx - 1 if (header_b_idx is not None and header_b_idx > header_a_idx) else header_a_idx + 8
+    # 提取區塊 A (團隊四要素)：表頭位於標題列的下一列
+    if row_block_a_title is not None:
+        header_a_idx = row_block_a_title + 1
+        end_a = row_block_b_title if row_block_b_title is not None else header_a_idx + 8
         block_a = df_raw.iloc[header_a_idx + 1 : end_a].copy()
         block_a.columns = [str(c).strip() for c in df_raw.iloc[header_a_idx].tolist()]
         block_a = clean_dataframe_times(deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)))
     else:
-        block_a = clean_dataframe_times(deduplicate_columns(df_raw.dropna(how='all', axis=1)))
+        # 備用邏輯：尋找第一個出現「團隊總得分」的列
+        header_a_idx = None
+        for idx, row in df_raw.iterrows():
+            row_str = " ".join([str(v) for v in row.values if pd.notna(v)])
+            if "團隊總得分" in row_str or "團隊回合數" in row_str:
+                header_a_idx = idx
+                break
+        if header_a_idx is not None:
+            block_a = df_raw.iloc[header_a_idx + 1 : header_a_idx + 8].copy()
+            block_a.columns = [str(c).strip() for c in df_raw.iloc[header_a_idx].tolist()]
+            block_a = clean_dataframe_times(deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)))
+        else:
+            block_a = pd.DataFrame()
 
-    if header_b_idx is not None:
+    # 提取區塊 B (球員洞察與戰力短評)：表頭位於標題列的下一列
+    if row_block_b_title is not None:
+        header_b_idx = row_block_b_title + 1
         block_b = df_raw.iloc[header_b_idx + 1 : header_b_idx + 8].copy()
         block_b.columns = [str(c).strip() for c in df_raw.iloc[header_b_idx].tolist()]
         block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
     else:
-        block_b = pd.DataFrame()
+        header_b_idx = None
+        for idx, row in df_raw.iterrows():
+            row_str = " ".join([str(v) for v in row.values if pd.notna(v)])
+            if "高球權核心" in row_str or "高效終結者" in row_str:
+                header_b_idx = idx
+                break
+        if header_b_idx is not None:
+            block_b = df_raw.iloc[header_b_idx + 1 : header_b_idx + 8].copy()
+            block_b.columns = [str(c).strip() for c in df_raw.iloc[header_b_idx].tolist()]
+            block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
+        else:
+            block_b = pd.DataFrame()
 
     return block_a, block_b
 
 # ----------------- 提取各隊專屬 PBP 表格 -----------------
-def extract_table_from_cell(df, r, c, max_rows=35):
-    if r is None or c is None or r >= len(df):
-        return pd.DataFrame()
-    header_row = r + 1
-    if header_row >= len(df):
-        return pd.DataFrame()
-    headers = []
-    col_indices = []
-    for cur_c in range(c, len(df.columns)):
-        val = df.iloc[header_row, cur_c]
-        if pd.isna(val) or str(val).strip() == "" or str(val).startswith("Unnamed"):
-            break
-        headers.append(str(val).strip())
-        col_indices.append(cur_c)
-    if not headers:
-        return pd.DataFrame()
-    data_rows = []
-    for cur_r in range(header_row + 1, min(len(df), header_row + 1 + max_rows)):
-        first_val = str(df.iloc[cur_r, c]).strip()
-        if pd.isna(df.iloc[cur_r, c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
-            break
-        data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
-    res = pd.DataFrame(data_rows, columns=headers)
-    res = clean_dataframe_times(res)
-    return deduplicate_columns(res)
-
 def extract_pbp_blocks(filepath):
     if not filepath or not os.path.exists(filepath):
         return {}, pd.DataFrame()
@@ -194,22 +192,56 @@ def extract_pbp_blocks(filepath):
     r_lineup, c_lineup = None, None
     r_duo, c_duo = None, None
 
+    # 必須嚴格匹配包含「【」的大標題列，避免誤把欄位名稱「五人陣容組合」當成標題
     for r in range(len(df)):
         for c in range(len(df.columns)):
-            val = str(df.iloc[r, c])
-            if "On/Off" in val or "淨影響力總榜" in val:
-                r_onoff, c_onoff = r, c
-            elif "最佳五人陣容" in val or "五人陣容" in val:
-                r_lineup, c_lineup = r, c
-            elif "雙洋將" in val or "洋將搭檔" in val:
-                r_duo, c_duo = r, c
+            val = str(df.iloc[r, c]).strip()
+            if "【" in val:
+                if "on/off" in val.lower() or "淨影響力" in val:
+                    if r_onoff is None: r_onoff, c_onoff = r, c
+                elif "五人陣容" in val:
+                    if r_lineup is None: r_lineup, c_lineup = r, c
+                elif "雙洋將" in val or "化學效應" in val:
+                    if r_duo is None: r_duo, c_duo = r, c
+
+    def extract_subtable(title_r, title_c):
+        if title_r is None or title_c is None:
+            return pd.DataFrame()
+        # 真正的欄位表頭位於大標題的下一列
+        header_row_idx = title_r + 1
+        if header_row_idx >= len(df):
+            return pd.DataFrame()
+        
+        headers = []
+        col_indices = []
+        for cur_c in range(title_c, len(df.columns)):
+            h_val = df.iloc[header_row_idx, cur_c]
+            if pd.isna(h_val) or str(h_val).strip() == "" or str(h_val).startswith("Unnamed") or str(h_val) == "nan":
+                break
+            headers.append(str(h_val).strip())
+            col_indices.append(cur_c)
+            
+        if not headers:
+            return pd.DataFrame()
+            
+        # 資料列始於表頭下方
+        data_rows = []
+        for cur_r in range(header_row_idx + 1, min(len(df), header_row_idx + 35)):
+            first_val = str(df.iloc[cur_r, title_c]).strip()
+            if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
+                break
+            data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
+            
+        res = pd.DataFrame(data_rows, columns=headers)
+        res = clean_dataframe_times(res)
+        return deduplicate_columns(res)
 
     if r_onoff is not None:
-        blocks['on_off'] = extract_table_from_cell(df, r_onoff, c_onoff)
+        blocks['on_off'] = extract_subtable(r_onoff, c_onoff)
     if r_lineup is not None:
-        blocks['lineup'] = extract_table_from_cell(df, r_lineup, c_lineup)
+        blocks['lineup'] = extract_subtable(r_lineup, c_lineup)
     if r_duo is not None:
-        blocks['duo'] = extract_table_from_cell(df, r_duo, c_duo)
+        blocks['duo'] = extract_subtable(r_duo, c_duo)
 
     # 提取傳統攻守數據
     box_header_row = None
@@ -222,17 +254,15 @@ def extract_pbp_blocks(filepath):
     if box_header_row is not None:
         end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
         box_df = df.iloc[box_header_row + 1 : end_box].copy()
-        
-        # 欄位截取與去重
         raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
         valid_cols_idx = []
-        seen_headers = set()
+        seen = set()
         for idx_h, h in enumerate(raw_headers):
             if "Unnamed" in h or h == "" or "nan" in h or "【" in h:
                 break
-            if h in seen_headers:
+            if h in seen:
                 break
-            seen_headers.add(h)
+            seen.add(h)
             valid_cols_idx.append(idx_h)
             
         box_df = box_df.iloc[:, valid_cols_idx].copy()
@@ -326,18 +356,16 @@ elif nav_selection == MENU_SCATTER:
     if not df_players.empty and '球員名' in df_players.columns:
         pts_col = '總得分' if '總得分' in df_players.columns else ('得分' if '得分' in df_players.columns else None)
         
-        # 轉換數值型欄位
         for col in [pts_col, 'USG%', 'TS%', 'GmSc', 'EFF']:
             if col and col in df_players.columns:
                 df_players[col] = pd.to_numeric(df_players[col].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
 
-        # 自動百分比校正（若小於 1 則自動乘以 100）
+        # 自動百分比校正
         if 'USG%' in df_players.columns and df_players['USG%'].mean() > 0 and df_players['USG%'].mean() < 1.0:
             df_players['USG%'] = df_players['USG%'] * 100.0
         if 'TS%' in df_players.columns and df_players['TS%'].mean() > 0 and df_players['TS%'].mean() < 1.0:
             df_players['TS%'] = df_players['TS%'] * 100.0
 
-        # 過濾控制項
         c1, c2 = st.columns(2)
         with c1:
             min_pts = st.slider("最低得分篩選 (PTS)", min_value=0, max_value=35, value=10)
@@ -356,10 +384,8 @@ elif nav_selection == MENU_SCATTER:
             size_col = 'GmSc' if ('GmSc' in filtered.columns and filtered['GmSc'].sum() > 0) else 'EFF'
             filtered['氣泡大小'] = np.maximum(filtered[size_col], 5)
 
-            # 簡稱供標籤顯示
             filtered['簡稱'] = filtered['球員名'].apply(lambda x: str(x).split(' ')[0])
 
-            # 使用 Plotly 繪製互動散佈圖（徹底避免 Matplotlib 中文方塊問題）
             fig = px.scatter(
                 filtered,
                 x='USG%',
@@ -381,7 +407,6 @@ elif nav_selection == MENU_SCATTER:
             avg_u = filtered['USG%'].mean()
             avg_t = filtered['TS%'].mean()
 
-            # 平均十字參考輔助線
             fig.add_hline(y=avg_t, line_dash="dash", line_color="gray", annotation_text=f"平均 TS% ({avg_t:.1f}%)")
             fig.add_vline(x=avg_u, line_dash="dot", line_color="red", annotation_text=f"平均 USG% ({avg_u:.1f}%)")
 
@@ -412,7 +437,6 @@ elif nav_selection == MENU_PBP:
     team_options = ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
     selected_team = st.selectbox("選擇要深入分析的球隊", team_options)
 
-    # 匹配各隊專屬檔案
     target_file = find_team_file(selected_team) or find_file_fuzzy(selected_team)
 
     if target_file:

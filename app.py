@@ -16,6 +16,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ----------------- 隱藏 Streamlit 原生選單與頁尾 -----------------
+hide_streamlit_style = """
+<style>
+#MainMenu {visibility: hidden; display: none !important;}
+header {visibility: hidden; display: none !important;}
+[data-testid="stHeader"] {display: none !important;}
+[data-testid="stToolbar"] {display: none !important;}
+[data-testid="stDecoration"] {display: none !important;}
+footer {visibility: hidden; display: none !important;}
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 # ----------------- 隱藏右上角選單與 GitHub 原始碼按鈕 -----------------
 hide_streamlit_style = """
 <style>

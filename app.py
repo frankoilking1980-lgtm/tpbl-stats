@@ -5,6 +5,7 @@ import plotly.express as px
 import os
 import glob
 import re
+import datetime
 
 # ----------------- 頁面全域設定 -----------------
 st.set_page_config(
@@ -14,9 +15,60 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ----------------- 安全工具函式 -----------------
+# 解決 Matplotlib 中文字體顯示問題（若有備用靜態繪圖需求）
+plt.rcParams['font.sans-serif'] = ['Noto Sans CJK JP', 'DejaVu Sans', 'Arial Unicode MS']
+plt.rcParams['axes.unicode_minus'] = False
+
+# ----------------- 時間校正與安全工具函式 -----------------
+def clean_time_display(val):
+    """將被 Pandas / Excel 誤判為 Timedelta/天數的時間，校正還原回正常的 分:秒 (MM:SS)"""
+    if pd.isna(val):
+        return ""
+        
+    # 若被讀成 Timedelta 物件 (如 42 hours 41 mins 被自動進位為 1 day 18:41:00)
+    if isinstance(val, (pd.Timedelta, datetime.timedelta)):
+        tot_sec = val.total_seconds()
+        orig_mins = int(tot_sec // 3600)
+        orig_secs = int((tot_sec % 3600) // 60)
+        return f"{orig_mins:02d}:{orig_secs:02d}"
+    
+    val_str = str(val).strip()
+    
+    # 處理字串型態的 "1 day, 18:41:00" 或 "2 days, 22:46:00"
+    m_day = re.match(r'(\d+)\s*days?,?\s*(\d+):(\d+)(?::(\d+))?', val_str)
+    if m_day:
+        days = int(m_day.group(1))
+        hours = int(m_day.group(2))
+        mins = int(m_day.group(3))
+        orig_mins = days * 24 + hours
+        orig_secs = mins
+        return f"{orig_mins:02d}:{orig_secs:02d}"
+        
+    # 處理 Google Sheets 匯出的 ISO 時間字串 (如 PT35H44M00.000S)
+    m_pt = re.match(r'PT(\d+)H(\d+)M', val_str)
+    if m_pt:
+        return f"{int(m_pt.group(1)):02d}:{int(m_pt.group(2)):02d}"
+    
+    # 處理 "42:41:00" 或 "10:08:00" (去除末尾多餘的 :00 秒數)
+    m_hms = re.match(r'^(\d+):(\d+):00$', val_str)
+    if m_hms:
+        return f"{int(m_hms.group(1)):02d}:{int(m_hms.group(2)):02d}"
+        
+    return val_str
+
+def clean_dataframe_times(df):
+    """掃描表格中所有與時間相關的欄位，批量套用時間校正"""
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    for col in df.columns:
+        col_str = str(col)
+        if any(k in col_str for k in ['時間', 'Time', 'time', '共同時間', '累計時間']):
+            df[col] = df[col].apply(clean_time_display)
+    return df
+
 def deduplicate_columns(df):
-    """徹底解決 PyArrow 的 Duplicate column names found 錯誤"""
+    """徹底避免 PyArrow 拋出 Duplicate column names found 錯誤"""
     if df is None or df.empty:
         return df
     cols = [str(c).strip() for c in df.columns]
@@ -69,9 +121,9 @@ def parse_summary_sheet(filepath):
         end_a = header_b_idx - 1 if (header_b_idx is not None and header_b_idx > header_a_idx) else header_a_idx + 8
         block_a = df_raw.iloc[header_a_idx + 1 : end_a].copy()
         block_a.columns = [str(c).strip() for c in df_raw.iloc[header_a_idx].tolist()]
-        block_a = deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0))
+        block_a = clean_dataframe_times(deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)))
     else:
-        block_a = deduplicate_columns(df_raw.dropna(how='all', axis=1))
+        block_a = clean_dataframe_times(deduplicate_columns(df_raw.dropna(how='all', axis=1)))
 
     if header_b_idx is not None:
         block_b = df_raw.iloc[header_b_idx + 1 : header_b_idx + 8].copy()
@@ -106,6 +158,7 @@ def extract_table_from_cell(df, r, c, max_rows=35):
             break
         data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
     res = pd.DataFrame(data_rows, columns=headers)
+    res = clean_dataframe_times(res)
     return deduplicate_columns(res)
 
 def extract_pbp_blocks(filepath):
@@ -156,7 +209,7 @@ def extract_pbp_blocks(filepath):
         end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
         box_df = df.iloc[box_header_row + 1 : end_box].copy()
         
-        # 嚴格去重欄位名稱
+        # 欄位截取與去重
         raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
         valid_cols_idx = []
         seen_headers = set()
@@ -170,6 +223,7 @@ def extract_pbp_blocks(filepath):
             
         box_df = box_df.iloc[:, valid_cols_idx].copy()
         box_df.columns = [raw_headers[i] for i in valid_cols_idx]
+        box_df = clean_dataframe_times(box_df)
         box_df = deduplicate_columns(box_df.dropna(how='all', axis=0))
     else:
         box_df = pd.DataFrame()
@@ -186,17 +240,17 @@ def get_master_players():
             for s in xls.sheet_names:
                 df = pd.read_excel(f_master, sheet_name=s)
                 if '球員名' in df.columns:
-                    return deduplicate_columns(df)
+                    return clean_dataframe_times(deduplicate_columns(df))
                 df2 = pd.read_excel(f_master, sheet_name=s, header=1)
                 if '球員名' in df2.columns:
-                    return deduplicate_columns(df2)
+                    return clean_dataframe_times(deduplicate_columns(df2))
         except Exception:
             pass
 
     f_csv = find_file_fuzzy("全聯盟球員進階數據總表")
     if f_csv:
         try:
-            return deduplicate_columns(pd.read_csv(f_csv))
+            return clean_dataframe_times(deduplicate_columns(pd.read_csv(f_csv)))
         except Exception:
             pass
 
@@ -247,7 +301,7 @@ if nav_selection == MENU_SUMMARY:
         st.warning("⚠️ 找不到總表檔案（`tpbl_summary.xlsx`）。")
 
 # =========================================================================
-# 分頁 2：USG% vs TS% 散佈圖 (升級為 Plotly 互動圖表)
+# 分頁 2：USG% vs TS% 散佈圖 (Plotly 互動圖表)
 # =========================================================================
 elif nav_selection == MENU_SCATTER:
     st.title("🎯 球員效率象限圖：球權使用率 (USG%) vs 真實命中率 (TS%)")
@@ -288,10 +342,10 @@ elif nav_selection == MENU_SCATTER:
             size_col = 'GmSc' if ('GmSc' in filtered.columns and filtered['GmSc'].sum() > 0) else 'EFF'
             filtered['氣泡大小'] = np.maximum(filtered[size_col], 5)
 
-            # 簡化球員名字以供標註
+            # 簡稱供標籤顯示
             filtered['簡稱'] = filtered['球員名'].apply(lambda x: str(x).split(' ')[0])
 
-            # 使用 Plotly 繪製現代互動散佈圖（完美解決中文缺字問題）
+            # 使用 Plotly 繪製互動散佈圖（徹底避免 Matplotlib 中文方塊問題）
             fig = px.scatter(
                 filtered,
                 x='USG%',
@@ -313,7 +367,7 @@ elif nav_selection == MENU_SCATTER:
             avg_u = filtered['USG%'].mean()
             avg_t = filtered['TS%'].mean()
 
-            # 添加平均十字輔助線
+            # 平均十字參考輔助線
             fig.add_hline(y=avg_t, line_dash="dash", line_color="gray", annotation_text=f"平均 TS% ({avg_t:.1f}%)")
             fig.add_vline(x=avg_u, line_dash="dot", line_color="red", annotation_text=f"平均 USG% ({avg_u:.1f}%)")
 
@@ -344,6 +398,7 @@ elif nav_selection == MENU_PBP:
     team_options = ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
     selected_team = st.selectbox("選擇要深入分析的球隊", team_options)
 
+    # 模糊尋找該隊伍的專屬 Excel 檔案
     kw = selected_team.replace("福爾摩沙", "").replace("新北", "").replace("高雄全家", "").replace("臺北台新", "").replace("桃園台啤永豐", "").replace("新竹御嵿", "")
     target_file = find_file_fuzzy(kw) or find_file_fuzzy(selected_team)
 

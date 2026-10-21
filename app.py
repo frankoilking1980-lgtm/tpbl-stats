@@ -344,7 +344,7 @@ if nav_selection == MENU_SUMMARY:
                                     f"""
                                     <div style="margin-bottom: 8px;">
                                         <span style="font-size: 1.05rem; font-weight: bold; color: #FFFFFF;">{c_name}：</span>
-                                        <span style="font-size: 1.10rem; font-weight: 600; color: #00E676; background-color: rgba(0, 230, 118, 0.12); padding: 3px 10px; border-radius: 6px; display: inline-block;">{val}</span>
+                                        <span style="font-size: 1.07rem; font-weight: 600; color: #00E676; background-color: rgba(0, 230, 118, 0.12); padding: 3px 10px; border-radius: 6px; display: inline-block;">{val}</span>
                                     </div>
                                     """,
                                     unsafe_allow_html=True

@@ -18,42 +18,53 @@ plt.rcParams['axes.unicode_minus'] = False
 
 # ----------------- 本地 Excel 讀取工具 -----------------
 def load_excel_sheet(filename, sheet_name=0):
-    """讀取本地上傳的 Excel (.xlsx) 檔案指定分頁"""
+    """讀取本地上傳的 Excel (.xlsx) 檔案"""
     if os.path.exists(filename):
         try:
-            return pd.read_excel(filename, sheet_name=sheet_name)
+            # header=None 保留所有原始列，避免第一列標題吃掉欄位名稱
+            return pd.read_excel(filename, sheet_name=sheet_name, header=None)
         except Exception as e:
             st.error(f"讀取 Excel 分頁出錯：{e}")
             return None
     return None
 
 def parse_summary_sheet(df):
-    """自動拆解總表的【區塊 A：團隊四要素】與【區塊 B：球員洞察與戰力短評】"""
-    split_idx = None
+    """防呆版：精確拆解總表的【區塊 A：團隊四要素】與【區塊 B：球員洞察與戰力短評】"""
+    if df is None or df.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    header_a_idx = None
+    header_b_idx = None
+
+    # 安全逐列掃描關鍵字，完全避免 TypeError
     for idx, row in df.iterrows():
-        row_str = " ".join(row.astype(str).tolist())
-        if "區塊 B" in row_str or "高球權核心" in row_str or "戰力短評" in row_str:
-            split_idx = idx
-            break
+        try:
+            row_str = " ".join([str(val) for val in row.values if pd.notna(val)])
+        except Exception:
+            continue
             
-    if split_idx is not None:
-        block_a = df.iloc[:split_idx].dropna(how='all', axis=1)
-        sub_df = df.iloc[split_idx:]
-        header_row_idx = None
-        for i_idx, r in sub_df.iterrows():
-            if "高球權核心" in " ".join(r.astype(str).tolist()):
-                header_row_idx = i_idx
-                break
-        if header_row_idx is not None:
-            block_b = df.iloc[header_row_idx+1:].copy()
-            block_b.columns = df.iloc[header_row_idx].tolist()
-            block_b = block_b.dropna(how='all', axis=1)
-        else:
-            block_b = pd.DataFrame()
+        if "團隊總得分" in row_str or "百回合進攻效率" in row_str:
+            header_a_idx = idx
+        elif "高球權核心" in row_str or "戰力短評" in row_str:
+            header_b_idx = idx
+
+    # 提取區塊 A
+    if header_a_idx is not None:
+        end_a = header_b_idx - 1 if (header_b_idx is not None and header_b_idx > header_a_idx) else header_a_idx + 8
+        block_a = df.iloc[header_a_idx + 1 : end_a].copy()
+        block_a.columns = [str(c).strip() for c in df.iloc[header_a_idx].tolist()]
+        block_a = block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)
     else:
-        block_a = df
+        block_a = df.dropna(how='all', axis=1)
+
+    # 提取區塊 B
+    if header_b_idx is not None:
+        block_b = df.iloc[header_b_idx + 1 : header_b_idx + 8].copy()
+        block_b.columns = [str(c).strip() for c in df.iloc[header_b_idx].tolist()]
+        block_b = block_b.dropna(how='all', axis=1).dropna(how='all', axis=0)
+    else:
         block_b = pd.DataFrame()
-        
+
     return block_a, block_b
 
 # ----------------- 側邊欄導航 -----------------
@@ -65,7 +76,7 @@ nav_selection = st.sidebar.radio(
     ["🏆 7隊戰力評級與攻防總評", "🎯 主力球員效率象限圖 (USG% vs TS%)", "⚡ 各隊陣容與 On/Off 深入分析"]
 )
 
-# 讀取本地 Excel 檔案的第一個分頁（7隊戰力與綜合評分）
+# 讀取本地 Excel 檔案
 summary_df = load_excel_sheet("tpbl_summary.xlsx", sheet_name=0)
 
 # ----------------- 分頁 1：7隊戰力與攻防總評 -----------------
@@ -84,12 +95,18 @@ if nav_selection == "🏆 7隊戰力評級與攻防總評":
         if not block_b.empty:
             st.subheader("🔍 重點球員洞察與教練體系戰力短評")
             for _, row in block_b.iterrows():
-                team_name = str(row.get('球隊名稱', '球隊'))
-                if team_name and team_name != 'nan':
-                    with st.expander(f"🏀 {team_name} — 戰績：{row.get('開季戰績', '尚未出賽')}", expanded=True):
-                        st.markdown(f"**高球權核心**：`{row.get('高球權核心 (USG% > 25% 且 TS% > 55%)', '無')}`")
-                        st.markdown(f"**高效終結者**：`{row.get('高效終結者 (GmSc 前二且 eFG% > 60%)', '無')}`")
-                        st.info(f"**戰力短評與體系分析**：\n\n{row.get('戰力短評與攻防體系洞察', '暫無短評')}")
+                # 取得球隊名稱
+                team_name = str(row.iloc[0]) if len(row) > 0 else "球隊"
+                if team_name and team_name != "nan" and "區塊" not in team_name:
+                    record = str(row.iloc[1]) if len(row) > 1 else "尚未出賽"
+                    with st.expander(f"🏀 {team_name} — 戰績：{record}", expanded=True):
+                        col_names = [str(c) for c in block_b.columns]
+                        for c_idx, c_name in enumerate(col_names[2:], start=2):
+                            val = row.iloc[c_idx] if c_idx < len(row) else ""
+                            if "短評" in c_name:
+                                st.info(f"**{c_name}**：\n\n{val}")
+                            else:
+                                st.markdown(f"**{c_name}**：`{val}`")
     else:
         st.warning("⚠️ 找不到 `tpbl_summary.xlsx` 檔案。請確認已將 478 KB 的總表改名為 `tpbl_summary.xlsx` 並上傳至 GitHub 專案根目錄中。")
 

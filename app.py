@@ -508,8 +508,35 @@ elif nav_selection == MENU_SCATTER:
             avg_u = filtered['USG%'].mean()
             avg_t = filtered['TS%'].mean()
 
-            fig.add_hline(y=avg_t, line_dash="dash", line_color="gray", annotation_text=f"平均 TS% ({avg_t:.1f}%)")
-            fig.add_vline(x=avg_u, line_dash="dot", line_color="red", annotation_text=f"平均 USG% ({avg_u:.1f}%)")
+            # 1. 高亮醒目的十字基準線 (加粗且使用高對比亮色)
+            fig.add_hline(
+                y=avg_t, 
+                line_dash="dash", 
+                line_color="#00E5FF",  # 亮青色
+                line_width=2,
+                annotation_text=f" 聯盟平均 TS% ({avg_t:.1f}%)", 
+                annotation_position="bottom right",
+                annotation_font=dict(size=12, color="#00E5FF")
+            )
+            fig.add_vline(
+                x=avg_u, 
+                line_dash="dash", 
+                line_color="#FFD700",  # 金黃色
+                line_width=2,
+                annotation_text=f" 聯盟平均 USG% ({avg_u:.1f}%)", 
+                annotation_position="top left",
+                annotation_font=dict(size=12, color="#FFD700")
+            )
+
+            # 2. 四個象限的文字標籤浮水印
+            quadrant_annotations = [
+                dict(x=avg_u + 6, y=avg_t + 18, text="🔥 第一象限：高產高效核心", showarrow=False, font=dict(size=13, color="rgba(255,255,255,0.4)")),
+                dict(x=avg_u - 6, y=avg_t + 18, text="🎯 第二象限：高效終結者", showarrow=False, font=dict(size=13, color="rgba(255,255,255,0.4)")),
+                dict(x=avg_u - 6, y=avg_t - 15, text="🛡️ 第三象限：角色球員/低迷區", showarrow=False, font=dict(size=13, color="rgba(255,255,255,0.4)")),
+                dict(x=avg_u + 6, y=avg_t - 15, text="⚠️ 第四象限：低效強攻區", showarrow=False, font=dict(size=13, color="rgba(255,255,255,0.4)"))
+            ]
+            for annot in quadrant_annotations:
+                fig.add_annotation(annot)
 
             fig.update_traces(textposition='top center')
             fig.update_layout(

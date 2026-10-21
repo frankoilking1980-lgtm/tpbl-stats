@@ -16,15 +16,34 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ----------------- 隱藏 Streamlit 原生選單與頁尾 -----------------
+# ----------------- 精準隱藏：隱藏選單與白條，保留側邊欄展開按鈕 -----------------
 hide_streamlit_style = """
 <style>
+/* 頂部 Header 改為透明背景，不遮擋左上角展開按鈕 */
+header, [data-testid="stHeader"] {
+    background-color: transparent !important;
+}
+
+/* 僅隱藏右上角的三點選單、原始碼與工具列按鈕 */
 #MainMenu {visibility: hidden; display: none !important;}
-header {visibility: hidden; display: none !important;}
-[data-testid="stHeader"] {display: none !important;}
-[data-testid="stToolbar"] {display: none !important;}
+[data-testid="stToolbar"] {visibility: hidden; display: none !important;}
 [data-testid="stDecoration"] {display: none !important;}
+[data-testid="stStatusWidget"] {display: none !important;}
+
+/* 強制確保左上角的「展開側邊欄按鈕 (>>)」清晰可見 */
+[data-testid="collapsedControl"] {
+    visibility: visible !important;
+    display: flex !important;
+    color: #00E676 !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    border-radius: 8px !important;
+}
+
+/* 隱藏原生頁尾與嵌入模式底部白條 (Built with Streamlit) */
 footer {visibility: hidden; display: none !important;}
+[data-testid="stEmbedFooter"] {display: none !important;}
+div[class*="viewerBadge"] {display: none !important;}
+div[class*="stEmbedFooter"] {display: none !important;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)

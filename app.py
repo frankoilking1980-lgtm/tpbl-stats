@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.express as px
 import os
 import glob
 import re
@@ -14,36 +14,36 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 解決 Matplotlib 中文字體顯示問題
-plt.rcParams['font.sans-serif'] = ['Noto Sans CJK JP', 'DejaVu Sans', 'Arial Unicode MS']
-plt.rcParams['axes.unicode_minus'] = False
+# ----------------- 安全工具函式 -----------------
+def deduplicate_columns(df):
+    """徹底解決 PyArrow 的 Duplicate column names found 錯誤"""
+    if df is None or df.empty:
+        return df
+    cols = [str(c).strip() for c in df.columns]
+    cols = [f"Col_{i}" if c == "" or c == "nan" or "Unnamed" in c else c for i, c in enumerate(cols)]
+    seen = {}
+    new_cols = []
+    for c in cols:
+        if c in seen:
+            seen[c] += 1
+            new_cols.append(f"{c}_{seen[c]}")
+        else:
+            seen[c] = 0
+            new_cols.append(c)
+    df.columns = new_cols
+    return df
 
-# ----------------- 寬鬆模糊搜尋檔案 -----------------
 def find_file_fuzzy(keyword):
-    """跨平台不分大小寫、不限副檔名尋找檔案"""
+    """跨平台不分大小寫尋找檔案"""
     keyword_clean = keyword.lower().strip()
     for fname in os.listdir('.'):
         fname_lower = fname.lower()
-        if keyword_clean in fname_lower:
-            if fname_lower.endswith(('.xlsx', '.xls', '.csv')):
-                return fname
+        if keyword_clean in fname_lower and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
+            return fname
     return None
-
-def load_any_file(filepath, sheet_name=0):
-    """安全載入 Excel 或 CSV"""
-    if not filepath or not os.path.exists(filepath):
-        return None
-    try:
-        if filepath.lower().endswith('.csv'):
-            return pd.read_csv(filepath)
-        else:
-            return pd.read_excel(filepath, sheet_name=sheet_name)
-    except Exception:
-        return None
 
 # ----------------- 總表拆解解析 -----------------
 def parse_summary_sheet(filepath):
-    df_raw = None
     try:
         if filepath.lower().endswith('.csv'):
             df_raw = pd.read_csv(filepath, header=None)
@@ -69,14 +69,14 @@ def parse_summary_sheet(filepath):
         end_a = header_b_idx - 1 if (header_b_idx is not None and header_b_idx > header_a_idx) else header_a_idx + 8
         block_a = df_raw.iloc[header_a_idx + 1 : end_a].copy()
         block_a.columns = [str(c).strip() for c in df_raw.iloc[header_a_idx].tolist()]
-        block_a = block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)
+        block_a = deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0))
     else:
-        block_a = df_raw.dropna(how='all', axis=1)
+        block_a = deduplicate_columns(df_raw.dropna(how='all', axis=1))
 
     if header_b_idx is not None:
         block_b = df_raw.iloc[header_b_idx + 1 : header_b_idx + 8].copy()
         block_b.columns = [str(c).strip() for c in df_raw.iloc[header_b_idx].tolist()]
-        block_b = block_b.dropna(how='all', axis=1).dropna(how='all', axis=0)
+        block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
     else:
         block_b = pd.DataFrame()
 
@@ -105,7 +105,8 @@ def extract_table_from_cell(df, r, c, max_rows=35):
         if pd.isna(df.iloc[cur_r, c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
             break
         data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
-    return pd.DataFrame(data_rows, columns=headers)
+    res = pd.DataFrame(data_rows, columns=headers)
+    return deduplicate_columns(res)
 
 def extract_pbp_blocks(filepath):
     if not filepath or not os.path.exists(filepath):
@@ -154,13 +155,22 @@ def extract_pbp_blocks(filepath):
     if box_header_row is not None:
         end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
         box_df = df.iloc[box_header_row + 1 : end_box].copy()
-        box_df.columns = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
-        valid_cols = []
-        for col_name in box_df.columns:
-            if "Unnamed" in col_name or col_name == "" or "【" in col_name:
+        
+        # 嚴格去重欄位名稱
+        raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
+        valid_cols_idx = []
+        seen_headers = set()
+        for idx_h, h in enumerate(raw_headers):
+            if "Unnamed" in h or h == "" or "nan" in h or "【" in h:
                 break
-            valid_cols.append(col_name)
-        box_df = box_df[valid_cols].dropna(how='all', axis=0)
+            if h in seen_headers:
+                break
+            seen_headers.add(h)
+            valid_cols_idx.append(idx_h)
+            
+        box_df = box_df.iloc[:, valid_cols_idx].copy()
+        box_df.columns = [raw_headers[i] for i in valid_cols_idx]
+        box_df = deduplicate_columns(box_df.dropna(how='all', axis=0))
     else:
         box_df = pd.DataFrame()
 
@@ -169,7 +179,6 @@ def extract_pbp_blocks(filepath):
 # ----------------- 取得球員母表數據 -----------------
 @st.cache_data(ttl=300)
 def get_master_players():
-    # 尋找全聯盟進階總表
     f_master = find_file_fuzzy("進階數據與戰力評級總表")
     if f_master:
         try:
@@ -177,19 +186,17 @@ def get_master_players():
             for s in xls.sheet_names:
                 df = pd.read_excel(f_master, sheet_name=s)
                 if '球員名' in df.columns:
-                    return df
-                # header=1 嘗試
+                    return deduplicate_columns(df)
                 df2 = pd.read_excel(f_master, sheet_name=s, header=1)
                 if '球員名' in df2.columns:
-                    return df2
+                    return deduplicate_columns(df2)
         except Exception:
             pass
 
-    # 嘗試從全聯盟 CSV 載入
     f_csv = find_file_fuzzy("全聯盟球員進階數據總表")
     if f_csv:
         try:
-            return pd.read_csv(f_csv)
+            return deduplicate_columns(pd.read_csv(f_csv))
         except Exception:
             pass
 
@@ -240,16 +247,15 @@ if nav_selection == MENU_SUMMARY:
         st.warning("⚠️ 找不到總表檔案（`tpbl_summary.xlsx`）。")
 
 # =========================================================================
-# 分頁 2：USG% vs TS% 散佈圖
+# 分頁 2：USG% vs TS% 散佈圖 (升級為 Plotly 互動圖表)
 # =========================================================================
 elif nav_selection == MENU_SCATTER:
     st.title("🎯 球員效率象限圖：球權使用率 (USG%) vs 真實命中率 (TS%)")
-    st.markdown("氣泡大小代表單場綜合表現值 (**GmSc**)，右上角為高產量且高效率之核心神獸。")
+    st.markdown("氣泡大小代表單場綜合表現值 (**GmSc**)，右上角為高產量且高效率之核心神獸。支援滑鼠懸停查看球員詳情與縮放。")
 
     df_players = get_master_players()
 
     if not df_players.empty and '球員名' in df_players.columns:
-        # 自動對齊欄位名稱（相容「總得分」或「得分」）
         pts_col = '總得分' if '總得分' in df_players.columns else ('得分' if '得分' in df_players.columns else None)
         
         # 轉換數值型欄位
@@ -257,10 +263,16 @@ elif nav_selection == MENU_SCATTER:
             if col and col in df_players.columns:
                 df_players[col] = pd.to_numeric(df_players[col].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
 
-        # 側邊欄滑桿過濾器
+        # 自動百分比校正（若小於 1 則自動乘以 100）
+        if df_players['USG%'].mean() > 0 and df_players['USG%'].mean() < 1.0:
+            df_players['USG%'] = df_players['USG%'] * 100.0
+        if df_players['TS%'].mean() > 0 and df_players['TS%'].mean() < 1.0:
+            df_players['TS%'] = df_players['TS%'] * 100.0
+
+        # 過濾控制項
         c1, c2 = st.columns(2)
         with c1:
-            min_pts = st.slider("最低場均/總得分篩選 (PTS)", min_value=0, max_value=35, value=10)
+            min_pts = st.slider("最低得分篩選 (PTS)", min_value=0, max_value=35, value=10)
         with c2:
             id_col = '本土/洋將' if '本土/洋將' in df_players.columns else None
             id_options = ["全部"] + list(df_players[id_col].dropna().unique()) if id_col else ["全部"]
@@ -273,58 +285,54 @@ elif nav_selection == MENU_SCATTER:
             filtered = filtered[filtered[id_col].isin(selected_id)]
 
         if not filtered.empty and 'USG%' in filtered.columns and 'TS%' in filtered.columns:
-            fig, ax = plt.subplots(figsize=(11, 6.5), dpi=130)
-
-            categories = [
-                ('洋將', '#1f77b4', 'o'),
-                ('本土', '#ff7f0e', '^'),
-                ('外籍生/洋將', '#2ca02c', 's'),
-                ('外籍生/華裔', '#2ca02c', 's'),
-                ('洋將/歸化', '#1f77b4', 'o'),
-                ('華裔/本土', '#9467bd', 'D')
-            ]
-
             size_col = 'GmSc' if ('GmSc' in filtered.columns and filtered['GmSc'].sum() > 0) else 'EFF'
+            filtered['氣泡大小'] = np.maximum(filtered[size_col], 5)
 
-            plotted_cats = set()
-            for cat, color, marker in categories:
-                sub = filtered[filtered[id_col] == cat] if id_col else pd.DataFrame()
-                if not sub.empty:
-                    sizes = np.maximum(sub[size_col] * 14, 45) if size_col in sub.columns else 60
-                    ax.scatter(sub['USG%'], sub['TS%'], s=sizes, c=color, marker=marker, alpha=0.78, edgecolors='black', linewidth=1, label=cat)
-                    plotted_cats.add(cat)
+            # 簡化球員名字以供標註
+            filtered['簡稱'] = filtered['球員名'].apply(lambda x: str(x).split(' ')[0])
 
-            if id_col:
-                other_sub = filtered[~filtered[id_col].isin(plotted_cats)]
-                if not other_sub.empty:
-                    sizes = np.maximum(other_sub[size_col] * 14, 45) if size_col in other_sub.columns else 60
-                    ax.scatter(other_sub['USG%'], other_sub['TS%'], s=sizes, c='#7f7f7f', marker='o', alpha=0.78, edgecolors='black', linewidth=1, label='其他')
-
-            # 標註球員名字
-            for _, r in filtered.iterrows():
-                name_short = str(r['球員名']).split(' ')[0]
-                pt_val = r[pts_col] if pts_col else 0
-                ax.annotate(f"{name_short} ({pt_val:.1f}p)", (r['USG%'], r['TS%']), xytext=(5, 5), textcoords='offset points', fontsize=9)
+            # 使用 Plotly 繪製現代互動散佈圖（完美解決中文缺字問題）
+            fig = px.scatter(
+                filtered,
+                x='USG%',
+                y='TS%',
+                size='氣泡大小',
+                color=id_col if id_col else None,
+                text='簡稱',
+                hover_name='球員名',
+                hover_data={
+                    pts_col: True,
+                    'USG%': ':.1f',
+                    'TS%': ':.1f',
+                    size_col: ':.1f',
+                    '氣泡大小': False
+                },
+                template='plotly_dark'
+            )
 
             avg_u = filtered['USG%'].mean()
             avg_t = filtered['TS%'].mean()
-            ax.axvline(avg_u, color='darkred', linestyle=':', alpha=0.6, label=f"平均 USG% ({avg_u:.1f}%)")
-            ax.axhline(avg_t, color='gray', linestyle='--', alpha=0.6, label=f"平均 TS% ({avg_t:.1f}%)")
 
-            ax.set_title("TPBL 例行賽主力球員：球權使用率 (USG%) vs 真實命中率 (TS%)", fontsize=13, pad=12)
-            ax.set_xlabel("球權使用率 USG% (在場上終結球隊進攻回合比例 %)", fontsize=11)
-            ax.set_ylabel("真實命中率 TS% (綜合兩分/三分/罰球得分效率 %)", fontsize=11)
-            ax.grid(True, linestyle='--', alpha=0.3)
-            ax.legend(loc='lower left', frameon=True)
-            plt.tight_layout()
-            st.pyplot(fig)
+            # 添加平均十字輔助線
+            fig.add_hline(y=avg_t, line_dash="dash", line_color="gray", annotation_text=f"平均 TS% ({avg_t:.1f}%)")
+            fig.add_vline(x=avg_u, line_dash="dot", line_color="red", annotation_text=f"平均 USG% ({avg_u:.1f}%)")
+
+            fig.update_traces(textposition='top center')
+            fig.update_layout(
+                xaxis_title="球權使用率 USG% (%)",
+                yaxis_title="真實命中率 TS% (%)",
+                legend_title="球員身分",
+                height=650
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
 
             with st.expander("📋 查看象限圖球員詳細數據清單", expanded=False):
                 st.dataframe(filtered, use_container_width=True, hide_index=True)
         else:
-            st.warning("⚠️ 目前篩選條件下無符合球員，或數據缺少 USG%/TS% 數值。")
+            st.warning("⚠️ 目前篩選條件下無符合球員。")
     else:
-        st.info("💡 尚未讀取到《全聯盟球員進階數據總表》。請確認專案中已上傳該檔案。")
+        st.info("💡 尚未讀取到《全聯盟球員進階數據總表》。")
 
 # =========================================================================
 # 分頁 3：各隊 PBP 陣容與 On/Off 深入分析
@@ -336,8 +344,6 @@ elif nav_selection == MENU_PBP:
     team_options = ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
     selected_team = st.selectbox("選擇要深入分析的球隊", team_options)
 
-    # 模糊尋找該隊伍的專屬 Excel 檔案
-    # 支援「夢想家」、「國王」、「海神」等關鍵字匹配
     kw = selected_team.replace("福爾摩沙", "").replace("新北", "").replace("高雄全家", "").replace("臺北台新", "").replace("桃園台啤永豐", "").replace("新竹御嵿", "")
     target_file = find_file_fuzzy(kw) or find_file_fuzzy(selected_team)
 
@@ -349,7 +355,7 @@ elif nav_selection == MENU_PBP:
         if 'on_off' in blocks and not blocks['on_off'].empty:
             st.dataframe(blocks['on_off'], use_container_width=True, hide_index=True)
         else:
-            st.info(f"💡 {selected_team} 暫無 On/Off 統計資料（待後續賽程展開即時納入）。")
+            st.info(f"💡 {selected_team} 暫無 On/Off 統計資料。")
 
         # 2. 顯示最佳五人陣容
         st.subheader(f"🏆 {selected_team} — 最佳五人陣容 (Top Lineups)")
@@ -370,4 +376,4 @@ elif nav_selection == MENU_PBP:
             with st.expander(f"📋 查看 {selected_team} 基礎攻守數據表 (Box Score)", expanded=False):
                 st.dataframe(box_df, use_container_width=True, hide_index=True)
     else:
-        st.warning(f"⚠️ 找不到 {selected_team} 的 Excel 檔案。請確認專案中包含對應名稱的 Excel 檔。")
+        st.warning(f"⚠️ 找不到 {selected_team} 的 Excel 檔案。")

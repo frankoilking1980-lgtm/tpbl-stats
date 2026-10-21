@@ -386,7 +386,6 @@ def calculate_radar_scores(row):
 
 # ----------------- 側邊欄導航設定 -----------------
 st.sidebar.title("🏀 TPBL 數據總覽")
-st.sidebar.caption("本機數據庫 (Excel Local Mode)")
 
 MENU_SUMMARY = "🏆 7隊戰力評級與攻防總評"
 MENU_SCATTER = "🎯 主力球員效率象限圖 (USG% vs TS%)"

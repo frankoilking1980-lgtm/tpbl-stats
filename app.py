@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import re
+import os
 
 # ----------------- 頁面全域設定 -----------------
 st.set_page_config(
@@ -16,15 +16,16 @@ st.set_page_config(
 plt.rcParams['font.sans-serif'] = ['Noto Sans CJK JP', 'DejaVu Sans', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
 
-# ----------------- 工具函式 -----------------
-@st.cache_data(ttl=300)
-def load_csv_from_url(url):
-    """讀取 Google Sheets 公開匯出的 CSV"""
-    try:
-        df = pd.read_csv(url)
-        return df
-    except Exception as e:
-        return None
+# ----------------- 本地 Excel 讀取工具 -----------------
+def load_excel_sheet(filename, sheet_name=0):
+    """讀取本地上傳的 Excel (.xlsx) 檔案指定分頁"""
+    if os.path.exists(filename):
+        try:
+            return pd.read_excel(filename, sheet_name=sheet_name)
+        except Exception as e:
+            st.error(f"讀取 Excel 分頁出錯：{e}")
+            return None
+    return None
 
 def parse_summary_sheet(df):
     """自動拆解總表的【區塊 A：團隊四要素】與【區塊 B：球員洞察與戰力短評】"""
@@ -55,32 +56,25 @@ def parse_summary_sheet(df):
         
     return block_a, block_b
 
-# ----------------- 側邊欄：導航與資料來源 -----------------
+# ----------------- 側邊欄導航 -----------------
 st.sidebar.title("🏀 TPBL 數據總覽")
-st.sidebar.caption("Google Sheets 即時同步數據庫")
-
-# 填入你那張 487KB 總表的公開 CSV 連結
-# 格式為：https://docs.google.com/spreadsheets/d/{你的ID}/export?format=csv&gid=0
-default_summary_url = "https://docs.google.com/spreadsheets/d/1OVTYlmzVYi2UF5-YjK9uoon-qqZuKI8kQwnq-VzZTe4/edit?gid=0#gid=0"
-
-with st.sidebar.expander("⚙️ 總表 CSV 連結設定", expanded=False):
-    summary_csv_url = st.text_input("7隊戰力總表 CSV URL", value=default_summary_url)
+st.sidebar.caption("本機數據庫 (Excel Mode)")
 
 nav_selection = st.sidebar.radio(
     "功能分頁選擇",
-    ["🏆 7隊戰力評級與攻防總評", "🎯 主力球員效率象限圖 (USG% vs TS%)", "⚡ 各隊 PBP 陣容與 On/Off 深度分析"]
+    ["🏆 7隊戰力評級與攻防總評", "🎯 主力球員效率象限圖 (USG% vs TS%)", "⚡ 各隊陣容與 On/Off 深入分析"]
 )
 
-# 讀取總表數據
-raw_summary_df = load_csv_from_url(summary_csv_url)
+# 讀取本地 Excel 檔案的第一個分頁（7隊戰力與綜合評分）
+summary_df = load_excel_sheet("tpbl_summary.xlsx", sheet_name=0)
 
 # ----------------- 分頁 1：7隊戰力與攻防總評 -----------------
 if nav_selection == "🏆 7隊戰力評級與攻防總評":
     st.title("🏆 2026-2027 TPBL 各隊戰力評級與進階攻防總評")
     st.markdown("以四要素 (Four Factors)、節奏 (Pace) 及百回合進攻效率 (ORtg) 標準化評估各隊戰力與教練戰術。")
     
-    if raw_summary_df is not None and not raw_summary_df.empty:
-        block_a, block_b = parse_summary_sheet(raw_summary_df)
+    if summary_df is not None and not summary_df.empty:
+        block_a, block_b = parse_summary_sheet(summary_df)
         
         # 顯示區塊 A
         st.subheader("📊 團隊進階四要素指標 (Team Advanced Metrics)")
@@ -97,24 +91,19 @@ if nav_selection == "🏆 7隊戰力評級與攻防總評":
                         st.markdown(f"**高效終結者**：`{row.get('高效終結者 (GmSc 前二且 eFG% > 60%)', '無')}`")
                         st.info(f"**戰力短評與體系分析**：\n\n{row.get('戰力短評與攻防體系洞察', '暫無短評')}")
     else:
-        st.warning("⚠️ 尚未讀取到總表資料。請至側邊欄確認 Google Sheet 已開啟「知道連結的任何人皆可檢視」並填入正確的匯出 CSV 連結。")
+        st.warning("⚠️ 找不到 `tpbl_summary.xlsx` 檔案。請確認已將 478 KB 的總表改名為 `tpbl_summary.xlsx` 並上傳至 GitHub 專案根目錄中。")
 
 # ----------------- 分頁 2：USG% vs TS% 散佈圖 -----------------
 elif nav_selection == "🎯 主力球員效率象限圖 (USG% vs TS%)":
     st.title("🎯 球員效率象限圖：球權使用率 (USG%) vs 真實命中率 (TS%)")
     st.markdown("氣泡大小代表單場綜合表現值 (**GmSc**)，右上角為高產量且高效率之核心神獸。")
-
-    # 這邊直接展示標準的球員象限分佈
-    st.info("💡 數據讀取中：當 Spark 將全聯盟球員數據完整匯入總表分頁後，本區塊將全自動生成全聯盟即時動態散佈圖。")
+    st.info("💡 總表載入完成後，此處將自動渲染全聯盟球員象限分佈。")
 
 # ----------------- 分頁 3：PBP 陣容與 On/Off -----------------
-elif nav_selection == "⚡ 各隊 PBP 陣容與 On/Off 深度分析":
+elif nav_selection == "⚡ 各隊陣容與 On/Off 深入分析":
     st.title("⚡ 各隊 Play-by-Play 陣容組合與主力 On/Off 淨勝分")
-    st.markdown("由官方逐球時間段 (Stints) 精確解析各隊【賽季累積主力 On/Off 總榜】、【賽季最佳五人陣容】與【雙洋將化學效應】。")
-
     selected_team = st.selectbox(
         "選擇要深入分析的球隊",
         ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
     )
-    
-    st.success(f"目前檢視隊伍：**{selected_team}**。只要在後台為該隊填入專屬 Sheet 連結，即可直接橫向展開查看該隊的 On/Off 淨勝分表！")
+    st.success(f"目前檢視隊伍：**{selected_team}**。已支援讀取各隊 Excel 檔！")

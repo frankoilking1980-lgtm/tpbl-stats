@@ -338,9 +338,17 @@ if nav_selection == MENU_SUMMARY:
                         for c_idx, c_name in enumerate(col_names[2:], start=2):
                             val = row.iloc[c_idx] if c_idx < len(row) else ""
                             if "短評" in c_name:
-                                st.info(f"**{c_name}**：\n\n{val}")
-                            else:
-                                st.markdown(f"**{c_name}**：`{val}`")
+                            st.info(f"**{c_name}**：\n\n{val}")
+                        else:
+                            st.markdown(
+                                f"""
+                                <div style="margin-bottom: 8px;">
+                                    <span style="font-size: 1.05rem; font-weight: bold; color: #FFFFFF;">{c_name}：</span>
+                                    <span style="font-size: 1.25rem; font-weight: 600; color: #00E676; background-color: rgba(0, 230, 118, 0.12); padding: 3px 10px; border-radius: 6px; display: inline-block;">{val}</span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
     else:
         st.warning("⚠️ 找不到總表檔案（`tpbl_summary.xlsx`）。")
 

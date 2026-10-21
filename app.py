@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ----------------- 頂部現代風格與全端隱藏 CSS -----------------
+/* ----------------- 頂部現代風格與全端隱藏 CSS ----------------- */
 top_nav_style = """
 <style>
 /* 1. 徹底隱藏原生 Header、工具列、頁尾與嵌入白條 */
@@ -26,72 +26,77 @@ header, [data-testid="stHeader"] {display: none !important;}
 footer, [data-testid="stEmbedFooter"] {display: none !important;}
 div[class*="viewerBadge"] {display: none !important;}
 
-/* 2. 徹底關閉左側邊欄與抽屜按鈕，將 100% 空間留給數據內容 */
+/* 2. 徹底關閉左側邊欄，釋放 100% 畫面空間 */
 [data-testid="stSidebar"] {display: none !important;}
 [data-testid="stSidebarCollapseButton"] {display: none !important;}
 [data-testid="collapsedControl"] {display: none !important;}
 
-/* 3. 頂部橫向導航列：100% 滿版填滿、按鈕放大、內容完全置中 */
+/* 3. 徹底拔除「導航選單」標題標籤 */
+div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
+    display: none !important;
+}
+
+/* 4. 頂部橫向容器：100% 滿版、居中 */
 div[data-testid="stRadio"] {
     width: 100% !important;
 }
 
-div[data-testid="stRadio"] > div {
-    width: 100% !important;
+div[data-testid="stRadio"] div[role="radiogroup"] {
     display: flex !important;
     flex-direction: row !important;
-    flex-wrap: wrap !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
     gap: 12px !important;
     background: rgba(255, 255, 255, 0.03) !important;
     padding: 10px 14px !important;
-    border-radius: 16px !important;
+    border-radius: 14px !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    margin-bottom: 26px !important;
+    margin-bottom: 24px !important;
 }
 
-/* 讓 5 個按鈕自動平分 100% 寬度，填滿左至右，內容水平垂直置中 */
-div[data-testid="stRadio"] label {
+/* 5. 5 個按鈕等寬平分寬度、填滿左至右、文字水平垂直置中 */
+div[data-testid="stRadio"] label[data-baseweb="radio"] {
     flex: 1 1 0 !important;
-    min-width: 160px !important;
+    min-width: 0 !important;
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
     text-align: center !important;
     background-color: rgba(255, 255, 255, 0.05) !important;
-    padding: 14px 18px !important;
-    border-radius: 10px !important;
+    padding: 14px 8px !important;
+    border-radius: 9px !important;
     cursor: pointer !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    transition: all 0.25s ease !important;
+    transition: all 0.2s ease !important;
 }
 
-/* 按鈕文字加大、加粗 */
-div[data-testid="stRadio"] label p {
-    font-size: 1.15rem !important;
+/* 按鈕內文字加大、加粗且居中 */
+div[data-testid="stRadio"] label[data-baseweb="radio"] p {
+    font-size: 1.12rem !important;
     font-weight: 600 !important;
     margin: 0 !important;
-    letter-spacing: 0.5px !important;
+    text-align: center !important;
+    white-space: nowrap !important;
 }
 
 /* 滑鼠懸停效果 */
-div[data-testid="stRadio"] label:hover {
+div[data-testid="stRadio"] label[data-baseweb="radio"]:hover {
     background-color: rgba(0, 230, 118, 0.15) !important;
     border-color: #00E676 !important;
-    transform: translateY(-1px) !important;
 }
 
 /* 當前選中狀態高亮 (亮綠色外框與文字) */
-div[data-testid="stRadio"] label:has(input:checked) {
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
     background-color: rgba(0, 230, 118, 0.18) !important;
     border-color: #00E676 !important;
 }
-div[data-testid="stRadio"] label:has(input:checked) p {
+div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p {
     color: #00E676 !important;
     font-weight: 700 !important;
 }
-
 </style>
 """
+
 st.markdown(top_nav_style, unsafe_allow_html=True)
 
 # ----------------- 時間與數值格式化工具函式 -----------------

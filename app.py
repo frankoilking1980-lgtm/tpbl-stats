@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-#----------------- 頂部現代風格與全端隱藏 CSS ----------------- 
+# ----------------- 頂部現代風格：電腦/手機雙端完全自適應 CSS -----------------
 top_nav_style = """
 <style>
 /* 1. 徹底隱藏原生 Header、工具列、頁尾與嵌入白條 */
@@ -31,61 +31,95 @@ div[class*="viewerBadge"] {display: none !important;}
 [data-testid="stSidebarCollapseButton"] {display: none !important;}
 [data-testid="collapsedControl"] {display: none !important;}
 
-/* 3. 徹底拔除「導航選單」標題標籤 */
+/* 3. 隱藏 st.radio 頂部的提示標題「導航選單」 */
 div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
     display: none !important;
 }
 
-/* 4. 頂部橫向容器：100% 滿版、居中 */
-div[data-testid="stRadio"] {
-    width: 100% !important;
+/* ========================================================= */
+/* 【電腦螢幕專屬樣式：寬度 >= 768px】                      */
+/* 特點：100% 滿版填滿、5 個按鈕等分平鋪、大字號置中        */
+/* ========================================================= */
+@media (min-width: 768px) {
+    div[data-testid="stRadio"] {
+        width: 100% !important;
+    }
+    div[data-testid="stRadio"] div[role="radiogroup"] {
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 12px !important;
+        background: rgba(255, 255, 255, 0.03) !important;
+        padding: 10px 14px !important;
+        border-radius: 14px !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        margin-bottom: 24px !important;
+    }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] {
+        flex: 1 1 0 !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        text-align: center !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        padding: 12px 10px !important;
+        border-radius: 9px !important;
+        cursor: pointer !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        transition: all 0.2s ease !important;
+    }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] p {
+        font-size: 1.12rem !important;
+        font-weight: 600 !important;
+        margin: 0 !important;
+        white-space: nowrap !important;
+    }
 }
 
-div[data-testid="stRadio"] div[role="radiogroup"] {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    width: 100% !important;
-    gap: 12px !important;
-    background: rgba(255, 255, 255, 0.03) !important;
-    padding: 10px 14px !important;
-    border-radius: 14px !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    margin-bottom: 24px !important;
+/* ========================================================= */
+/* 【手機螢幕專屬樣式：寬度 < 768px】                       */
+/* 特點：按鈕自適應換行、加大觸控點擊面積、防止文字擠壓     */
+/* ========================================================= */
+@media (max-width: 767px) {
+    div[data-testid="stRadio"] {
+        width: 100% !important;
+    }
+    div[data-testid="stRadio"] div[role="radiogroup"] {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important; /* 手機上一排 2 個按鈕 */
+        gap: 8px !important;
+        background: transparent !important;
+        padding: 0 !important;
+        border: none !important;
+        margin-bottom: 16px !important;
+    }
+    /* 最後一個按鈕（進階數據辭典）跨滿整行 */
+    div[data-testid="stRadio"] div[role="radiogroup"] > label:last-child {
+        grid-column: span 2 !important;
+    }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        background-color: rgba(255, 255, 255, 0.06) !important;
+        padding: 10px 6px !important;
+        border-radius: 8px !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] p {
+        font-size: 0.92rem !important;
+        font-weight: 600 !important;
+        margin: 0 !important;
+        text-align: center !important;
+    }
 }
 
-/* 5. 5 個按鈕等寬平分寬度、填滿左至右、文字水平垂直置中 */
-div[data-testid="stRadio"] label[data-baseweb="radio"] {
-    flex: 1 1 0 !important;
-    min-width: 0 !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    text-align: center !important;
-    background-color: rgba(255, 255, 255, 0.05) !important;
-    padding: 14px 8px !important;
-    border-radius: 9px !important;
-    cursor: pointer !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    transition: all 0.2s ease !important;
-}
-
-/* 按鈕內文字加大、加粗且居中 */
-div[data-testid="stRadio"] label[data-baseweb="radio"] p {
-    font-size: 1.12rem !important;
-    font-weight: 600 !important;
-    margin: 0 !important;
-    text-align: center !important;
-    white-space: nowrap !important;
-}
-
-/* 滑鼠懸停效果 */
+/* 4. 通用：滑鼠懸停與選中高亮效果 */
 div[data-testid="stRadio"] label[data-baseweb="radio"]:hover {
     background-color: rgba(0, 230, 118, 0.15) !important;
     border-color: #00E676 !important;
 }
-
-/* 當前選中狀態高亮 (亮綠色外框與文字) */
 div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
     background-color: rgba(0, 230, 118, 0.18) !important;
     border-color: #00E676 !important;

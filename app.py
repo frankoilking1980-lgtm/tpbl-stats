@@ -795,24 +795,44 @@ elif nav_selection == MENU_PBP:
         st.markdown(f"#### 🤝 {selected_team} — 雙洋將化學效應矩陣")
         if 'duo' in blocks and not blocks['duo'].empty:
             df_duo = blocks['duo'].copy()
+            headers = list(df_duo.columns)
             
-            # 定義各欄自適應寬度配置（數字緊湊，評論欄完全伸展）
-            duo_col_config = {
-                "洋將搭檔組合": st.column_config.TextColumn("洋將搭檔組合", width="medium"),
-                "共同時間": st.column_config.TextColumn("共同時間", width="small"),
-                "累計(+/-)": st.column_config.TextColumn("累計(+/-)", width="small"),
-                "Lineup ORtg": st.column_config.TextColumn("Lineup ORtg", width="small"),
-                "Lineup DRtg": st.column_config.TextColumn("Lineup DRtg", width="small"),
-                "Lineup NetRtg": st.column_config.TextColumn("Lineup NetRtg", width="small"),
-                "攻守特徵與搭配建議": st.column_config.TextColumn("攻守特徵與搭配建議", width="large")
-            }
-
-            st.dataframe(
-                df_duo, 
-                use_container_width=True, 
-                hide_index=True,
-                column_config=duo_col_config
-            )
+            # 建立自適應原生表格：前 N 欄緊湊貼合 (width: 1%)，最後一欄獨佔剩餘寬度
+            html = [
+                '<div style="overflow-x: auto; width: 100%; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 20px;">',
+                '<table style="width: 100%; border-collapse: collapse; font-size: 0.95rem; background-color: rgba(255,255,255,0.02); text-align: left;">',
+                '<thead><tr style="border-bottom: 1px solid rgba(255,255,255,0.12); background-color: rgba(255,255,255,0.04);">'
+            ]
+            
+            for i, h in enumerate(headers):
+                if i < len(headers) - 1:
+                    html.append(f'<th style="padding: 10px 14px; white-space: nowrap; width: 1%; color: #9E9E9E; font-weight: 600;">{h}</th>')
+                else:
+                    html.append(f'<th style="padding: 10px 14px; color: #9E9E9E; font-weight: 600;">{h}</th>')
+            html.append('</tr></thead><tbody>')
+            
+            for _, row in df_duo.iterrows():
+                html.append('<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">')
+                for i, h in enumerate(headers):
+                    val = str(row[h]).strip() if pd.notna(row[h]) else ""
+                    if i < len(headers) - 1:
+                        # 數值高亮處理 (+ 為綠色，- 為紅色)
+                        val_display = val
+                        if "NetRtg" in h or "(+/-)" in h:
+                            if val.startswith("+"):
+                                val_display = f'<span style="color: #00E676; font-weight: 600;">{val}</span>'
+                            elif val.startswith("-"):
+                                val_display = f'<span style="color: #FF5252; font-weight: 600;">{val}</span>'
+                        html.append(f'<td style="padding: 10px 14px; white-space: nowrap; width: 1%; color: #E0E0E0;">{val_display}</td>')
+                    else:
+                        html.append(f'<td style="padding: 10px 14px; color: #FFFFFF; line-height: 1.5;">{val}</td>')
+                html.append('</tr>')
+            html.append('</tbody></table></div>')
+            
+            st.markdown("".join(html), unsafe_allow_html=True)
+        else:
+            st.info(f"💡 {selected_team} 暫無雙洋將搭配資料。")
+            
 
             # 2. 自動提取評論，以自適應卡片完整展示文字（支援長文字自動換行）
             comment_col = None

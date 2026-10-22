@@ -484,9 +484,10 @@ def extract_pbp_blocks(filepath):
 
     return blocks, box_df
 
-# ----------------- 取得球員母表數據 -----------------
+# ----------------- 取得球員母表數據 (優先讀取總表，若無則自動從 7 隊合併) -----------------
 @st.cache_data(ttl=300)
 def get_master_players(candidate_dirs):
+    # 1. 優先檢查是否已有獨立總表
     f_master = find_file_in_folders(candidate_dirs, "進階數據與戰力評級總表")
     if f_master:
         try:
@@ -501,12 +502,41 @@ def get_master_players(candidate_dirs):
         except Exception:
             pass
 
-    f_csv = find_file_in_folders(candidate_dirs, "全聯盟球員進階數據總表")
-    if f_csv:
-        try:
-            return clean_dataframe_times(deduplicate_columns(pd.read_csv(f_csv)))
-        except Exception:
-            pass
+    # 2. 若無獨立總表，自動掃描 7 隊專屬表並即時聚合《球員進階數據》
+    all_team_dfs = []
+    teams = ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
+    for t_name in teams:
+        tf = find_team_file_in_folders(candidate_dirs, t_name)
+        if tf:
+            try:
+                xls = pd.ExcelFile(tf)
+                target_sheet = None
+                for s in xls.sheet_names:
+                    if "進階" in s:
+                        target_sheet = s
+                        break
+                if target_sheet:
+                    # 探測標頭列（通常在第 3 或第 4 列）
+                    raw_adv = pd.read_excel(tf, sheet_name=target_sheet, header=None)
+                    header_idx = None
+                    for r in range(min(6, len(raw_adv))):
+                        row_vals = [str(x).strip() for x in raw_adv.iloc[r].dropna().tolist()]
+                        if "球員名" in row_vals and ("出賽" in row_vals or "背號" in row_vals):
+                            header_idx = r
+                            break
+                    if header_idx is not None:
+                        t_df = raw_adv.iloc[header_idx + 1:].copy()
+                        t_df.columns = [str(x).strip() for x in raw_adv.iloc[header_idx].tolist()]
+                        t_df = t_df.dropna(subset=['球員名', '出賽'])
+                        if '球隊' not in t_df.columns or t_df['球隊'].isna().all():
+                            t_df['球隊'] = t_name
+                        all_team_dfs.append(t_df)
+            except Exception:
+                continue
+
+    if all_team_dfs:
+        combined = pd.concat(all_team_dfs, ignore_index=True)
+        return clean_dataframe_times(deduplicate_columns(combined))
 
     return pd.DataFrame()
 

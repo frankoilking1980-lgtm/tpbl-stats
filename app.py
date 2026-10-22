@@ -187,12 +187,7 @@ def get_ast_to_ratio(row):
         return "0.00"
 
 def make_stat_badge_row(label, val):
-    return f"""
-    <div style="display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.08);">
-        <span style="font-size: 1.05rem; font-weight: 600; color: #E0E0E0;">{label}</span>
-        <span style="font-size: 1.22rem; font-weight: 700; color: #00E676; background-color: rgba(0, 230, 118, 0.15); padding: 4px 14px; border-radius: 6px; letter-spacing: 0.5px;">{val}</span>
-    </div>
-    """
+    return f'<div style="display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.08);"><span style="font-size: 1.05rem; font-weight: 600; color: #E0E0E0;">{label}</span><span style="font-size: 1.22rem; font-weight: 700; color: #00E676; background-color: rgba(0, 230, 118, 0.15); padding: 4px 14px; border-radius: 6px; letter-spacing: 0.5px;">{val}</span></div>'
 
 def clean_dataframe_times(df):
     if df is None or df.empty:

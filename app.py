@@ -355,7 +355,7 @@ def split_lineup_and_pairs(df_lineup):
     df_pairs = df_pairs.dropna(subset=[col0]).dropna(how='all', axis=1)
     return df_5man, df_pairs
 
-# ----------------- 精確單場工作表抽取器 (五重精準防禦：杜絕 G01/G02 串場錯誤) -----------------
+# ----------------- 精確單場工作表抽取器 (排除「團隊總計 / X名球員」) -----------------
 def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
     if not filepath or not os.path.exists(filepath):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
@@ -427,17 +427,23 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
 
         box_rows = []
         for r in range(header_r + 1, len(df)):
-            p_name = df.iloc[r, 1] if len(df.columns) > 1 else None
-            if pd.isna(p_name) or str(p_name).strip() == "" or str(p_name) == "nan":
+            c0 = str(df.iloc[r, 0]).strip() if len(df.columns) > 0 and pd.notna(df.iloc[r, 0]) else ""
+            c1 = str(df.iloc[r, 1]).strip() if len(df.columns) > 1 and pd.notna(df.iloc[r, 1]) else ""
+            
+            if not c1 or c1 == "nan":
                 break
-            if any(k in str(p_name) for k in ['合計', '總計', 'TEAM', '團隊', 'Team']):
+                
+            # 同時檢查背號 (第0欄) 與球員名 (第1欄)，徹底排除「團隊總計 / 14名球員」等統計列
+            row_identity = f"{c0} {c1}"
+            if any(k in row_identity for k in ['合計', '總計', 'TEAM', '團隊', 'Team', '名球員', '全隊']):
                 continue
+                
             box_rows.append([df.iloc[r, ci] for ci in box_col_idxs])
 
         box_df = pd.DataFrame(box_rows, columns=box_cols)
         box_df = clean_dataframe_times(deduplicate_columns(box_df))
 
-        # 2. 提取右側陣容與 On/Off 表（從 Box 結束後一欄動態探測）
+        # 2. 提取右側陣容與 On/Off 表
         def extract_sub(start_c):
             if start_c is None or start_c >= len(df.columns):
                 return pd.DataFrame()
@@ -1079,7 +1085,7 @@ elif nav_selection == MENU_GAME:
             pass
 
     if not schedule_data:
-        st.info(f"💡 {stage_selection} 暫無可用的賽程索引。")
+        st.info(f"💡 {stage_selection} 暫無可用的賽程索引（請確認 `{active_dirs[0]}/schedule.json` 檔案存在且格式正確）。")
     else:
         game_labels = [
             f"{g.get('game_id', '')} ｜ {g.get('date', '')} ｜ {g.get('away_team', '')} {g.get('away_score', '')} : {g.get('home_score', '')} {g.get('home_team', '')} ({g.get('status', 'FINAL')})"
@@ -1101,11 +1107,11 @@ elif nav_selection == MENU_GAME:
         away_file = find_team_file_in_folders(active_dirs, away_team)
         home_file = find_team_file_in_folders(active_dirs, home_team)
 
-        # 優先抽取數據，以利自動比分校準
+        # 優先抽取數據
         box_away, onoff_away, lineup_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, sheet_name, cur_game_id, cur_game_date)
         box_home, onoff_home, lineup_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, sheet_name, cur_game_id, cur_game_date)
 
-        # 智慧比分校準：若 Excel 內球員實際得分加總大於 0，自動覆蓋 schedule.json 的可能筆誤
+        # 比分校準：若單場球員得分加總大於 0，自動校準覆蓋 schedule.json 的可能筆誤
         if stats_away.get('得分', 0) > 0:
             away_score = int(stats_away['得分'])
         if stats_home.get('得分', 0) > 0:
@@ -1209,6 +1215,7 @@ elif nav_selection == MENU_GAME:
                 render_bi_bar("罰球命中 (FTM/FTA)", f"{int(stats_away.get('罰球命中', 0))}/{int(fta_a)}", f"{int(stats_home.get('罰球命中', 0))}/{int(fta_h)}", higher_is_better=True),
             ])
 
+            table_wrapper_bg = "rgba(0, 0, 0, 0.02)" if is_light else "rgba(255, 255, 255, 0.02)"
             st.markdown(f'<div style="background: {table_wrapper_bg}; padding: 18px 22px; border-radius: 12px; border: 1px solid {card_border}; margin-bottom: 26px;">{bars_html}</div>', unsafe_allow_html=True)
 
             lineup_5man_away, pairs_away = split_lineup_and_pairs(lineup_away)

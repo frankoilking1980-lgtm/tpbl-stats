@@ -797,13 +797,12 @@ elif nav_selection == MENU_PBP:
             df_duo = blocks['duo'].copy()
             headers = list(df_duo.columns)
             
-            # 建立自適應原生表格：前 N 欄緊湊貼合 (width: 1%)，最後一欄獨佔剩餘寬度
+            # 自適應原生表格：前段數據緊湊貼合 (width: 1%)，後段建議自動展開鋪滿
             html = [
                 '<div style="overflow-x: auto; width: 100%; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 20px;">',
                 '<table style="width: 100%; border-collapse: collapse; font-size: 0.95rem; background-color: rgba(255,255,255,0.02); text-align: left;">',
                 '<thead><tr style="border-bottom: 1px solid rgba(255,255,255,0.12); background-color: rgba(255,255,255,0.04);">'
             ]
-            
             for i, h in enumerate(headers):
                 if i < len(headers) - 1:
                     html.append(f'<th style="padding: 10px 14px; white-space: nowrap; width: 1%; color: #9E9E9E; font-weight: 600;">{h}</th>')
@@ -816,7 +815,6 @@ elif nav_selection == MENU_PBP:
                 for i, h in enumerate(headers):
                     val = str(row[h]).strip() if pd.notna(row[h]) else ""
                     if i < len(headers) - 1:
-                        # 數值高亮處理 (+ 為綠色，- 為紅色)
                         val_display = val
                         if "NetRtg" in h or "(+/-)" in h:
                             if val.startswith("+"):
@@ -828,33 +826,7 @@ elif nav_selection == MENU_PBP:
                         html.append(f'<td style="padding: 10px 14px; color: #FFFFFF; line-height: 1.5;">{val}</td>')
                 html.append('</tr>')
             html.append('</tbody></table></div>')
-            
             st.markdown("".join(html), unsafe_allow_html=True)
-        else:
-            st.info(f"💡 {selected_team} 暫無雙洋將搭配資料。")
-            
-
-            # 2. 自動提取評論，以自適應卡片完整展示文字（支援長文字自動換行）
-            comment_col = None
-            for c in df_duo.columns:
-                if any(k in str(c) for k in ['建議', '特徵', '短評', '分析', '備註']):
-                    comment_col = c
-                    break
-
-            if comment_col:
-                st.markdown("##### 💡 雙洋將戰術特徵與教練搭配洞察")
-                for _, d_row in df_duo.iterrows():
-                    duo_name = str(d_row.iloc[0]) if len(d_row) > 0 else "洋將組合"
-                    comment_txt = str(d_row.get(comment_col, "")).strip()
-                    if comment_txt and comment_txt != "nan" and comment_txt != "-":
-                        st.markdown(f"""
-                        <div style="background-color: rgba(255, 255, 255, 0.04); border-left: 4px solid #00E676; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;">
-                            <span style="font-weight: 700; color: #00E676; font-size: 1.02rem;">🤝 {duo_name}</span>
-                            <p style="margin: 6px 0 0 0; color: #E0E0E0; font-size: 0.95rem; line-height: 1.6; word-break: break-word;">
-                                {comment_txt}
-                            </p>
-                        </div>
-                        """, unsafe_allow_html=True)
         else:
             st.info(f"💡 {selected_team} 暫無雙洋將搭配資料。")
 

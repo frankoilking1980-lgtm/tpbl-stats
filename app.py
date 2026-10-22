@@ -307,7 +307,8 @@ def parse_summary_sheet(filepath):
             block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
 
     return block_a, block_b
-# ----------------- 提取各隊專屬 PBP 表格 -----------------
+    
+# ----------------- 提取各隊專屬 PBP 表格 (相容直排與橫排) -----------------
 def extract_pbp_blocks(filepath):
     if not filepath or not os.path.exists(filepath):
         return {}, pd.DataFrame()
@@ -327,21 +328,21 @@ def extract_pbp_blocks(filepath):
     r_lineup, c_lineup = None, None
     r_duo, c_duo = None, None
 
-    for r in range(len(df)):
+    for r in range(min(10, len(df))):
         for c in range(len(df.columns)):
             val = str(df.iloc[r, c]).strip()
-            if "【" in val:
-                if "on/off" in val.lower() or "淨影響力" in val:
-                    if r_onoff is None: r_onoff, c_onoff = r, c
-                elif "五人陣容" in val:
-                    if r_lineup is None: r_lineup, c_lineup = r, c
-                elif "雙洋將" in val or "化學效應" in val:
-                    if r_duo is None: r_duo, c_duo = r, c
+            if "on/off" in val.lower() or "淨影響力" in val:
+                if r_onoff is None: r_onoff, c_onoff = r, c
+            elif "五人陣容" in val:
+                if r_lineup is None: r_lineup, c_lineup = r, c
+            elif "雙洋將" in val or "化學效應" in val or "洋將搭檔" in val:
+                if r_duo is None: r_duo, c_duo = r, c
 
     def extract_subtable(title_r, title_c):
         if title_r is None or title_c is None:
             return pd.DataFrame()
-        header_row_idx = title_r + 1
+        # 標題可能在 title_r，表頭在 title_r 或 title_r + 1
+        header_row_idx = title_r if ("陣容" in str(df.iloc[title_r, title_c]) or "球員名" in str(df.iloc[title_r, title_c])) else title_r + 1
         if header_row_idx >= len(df):
             return pd.DataFrame()
         
@@ -360,7 +361,7 @@ def extract_pbp_blocks(filepath):
         data_rows = []
         for cur_r in range(header_row_idx + 1, min(len(df), header_row_idx + 35)):
             first_val = str(df.iloc[cur_r, title_c]).strip()
-            if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
+            if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or "【" in first_val:
                 break
             data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
             
@@ -378,20 +379,18 @@ def extract_pbp_blocks(filepath):
     box_header_row = None
     for r in range(min(12, len(df))):
         row_str = " ".join([str(v) for v in df.iloc[r, :8] if pd.notna(v)])
-        if "球員名" in row_str and ("得分" in row_str or "出賽" in row_str):
+        if "球員名" in row_str and ("得分" in row_str or "出賽" in row_str or "背號" in row_str):
             box_header_row = r
             break
 
     if box_header_row is not None:
-        end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
+        end_box = len(df)
         box_df = df.iloc[box_header_row + 1 : end_box].copy()
         raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
         valid_cols_idx = []
         seen = set()
         for idx_h, h in enumerate(raw_headers):
-            if "Unnamed" in h or h == "" or "nan" in h or "【" in h:
-                break
-            if h in seen:
+            if "Unnamed" in h or h == "" or "nan" in h or (idx_h > 5 and h in seen):
                 break
             seen.add(h)
             valid_cols_idx.append(idx_h)
@@ -476,26 +475,19 @@ st.markdown(
 # =========================================================================
 # 賽季階段切換開關 (Season Stage Selector) - 靠左對齊
 # =========================================================================
-# =========================================================================
-# 賽季階段設定（暫時鎖定例行賽，對外隱藏切換按鈕）
-# =========================================================================
-stage_selection = "2026-2027 例行賽"
-active_dirs = ["data/season2026", "season2026", "."]
+stage_col1, _ = st.columns([1.2, 2])
+with stage_col1:
+    stage_selection = st.radio(
+        "選擇賽季階段",
+        ["🏆 2026-2027 例行賽", "🔥 2026-2027 季前熱身賽"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
-# 如需重新開啟熱身賽切換，將下方註解解開即可：
-# stage_col1, _ = st.columns([1.2, 2])
-# with stage_col1:
-#     stage_selection = st.radio(
-#         "選擇賽季階段",
-#         ["🏆 2026-2027 例行賽", "🔥 2026-2027 季前熱身賽"],
-#         horizontal=True,
-#         label_visibility="collapsed"
-#     )
-# if stage_selection == "🏆 2026-2027 例行賽":
-#     active_dirs = ["data/season2026", "season2026", "."]
-# else:
-#     active_dirs = ["data/preseason2026", "preseason2026", "."]
-
+if stage_selection == "🏆 2026-2027 例行賽":
+    active_dirs = ["data/season2026", "season2026", "."]
+else:
+    active_dirs = ["data/preseason2026", "preseason2026", "."]
 # =========================================================================
 # 頂部導航列 (Top Navigation Bar)
 # =========================================================================

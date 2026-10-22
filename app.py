@@ -884,15 +884,25 @@ elif nav_selection == MENU_CARD:
         if p2_row is None:
             st.divider()
             card_col1, card_col2, card_col3, card_col4 = st.columns(4)
-            pts_val = p1_row.get('總得分', p1_row.get('得分', 0))
+            
+            # 計算場均與總累計
+            games_cnt = float(p1_row.get('出賽', 1))
+            games_cnt = 1.0 if games_cnt <= 0 else games_cnt
+            
+            tot_pts = float(p1_row.get('總得分', p1_row.get('得分', 0)))
+            ppg_val = tot_pts / games_cnt
+            
+            raw_gmsc = float(p1_row.get('GmSc', p1_row.get('EFF', 0)))
+            # 若原始 GmSc 大於 50，代表是整季累計值，換算為場均 GmSc
+            gmsc_pg = raw_gmsc / games_cnt if raw_gmsc > 45 else raw_gmsc
+            
             ts_val = format_pct(p1_row.get('TS%', '0%'))
             usg_val = format_pct(p1_row.get('USG%', '0%'))
-            gmsc_val = str(p1_row.get('GmSc', p1_row.get('EFF', 0)))
 
-            card_col1.metric("場均/總得分 (PTS)", f"{pts_val} 分")
+            card_col1.metric("場均得分 (PPG)", f"{ppg_val:.1f} 分", delta=f"整季累計 {int(tot_pts)} 分" if tot_pts > 40 else None)
             card_col2.metric("真實命中率 (TS%)", ts_val)
             card_col3.metric("球權使用率 (USG%)", usg_val)
-            card_col4.metric("單場綜合評分 (GmSc)", gmsc_val)
+            card_col4.metric("場均綜合評分 (GmSc)", f"{gmsc_pg:.1f}", delta=f"整季累積 {raw_gmsc:.1f}" if raw_gmsc > 45 else None)
 
             r_col1, r_col2 = st.columns([1.1, 1])
             with r_col1:

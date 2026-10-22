@@ -31,14 +31,13 @@ div[class*="viewerBadge"] {display: none !important;}
 [data-testid="stSidebarCollapseButton"] {display: none !important;}
 [data-testid="collapsedControl"] {display: none !important;}
 
-/* 3. 隱藏 st.radio 頂部的提示標題「導航選單」 */
+/* 3. 隱藏 st.radio 頂部的提示標題 */
 div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
     display: none !important;
 }
 
 /* ========================================================= */
 /* 【電腦螢幕專屬樣式：寬度 >= 768px】                      */
-/* 特點：100% 滿版填滿、5 個按鈕等分平鋪、大字號置中        */
 /* ========================================================= */
 @media (min-width: 768px) {
     div[data-testid="stRadio"] {
@@ -51,10 +50,10 @@ div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
         width: 100% !important;
         gap: 12px !important;
         background: rgba(255, 255, 255, 0.03) !important;
-        padding: 10px 14px !important;
+        padding: 8px 12px !important;
         border-radius: 14px !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        margin-bottom: 24px !important;
+        margin-bottom: 20px !important;
     }
     div[data-testid="stRadio"] label[data-baseweb="radio"] {
         flex: 1 1 0 !important;
@@ -79,7 +78,6 @@ div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
 
 /* ========================================================= */
 /* 【手機螢幕專屬樣式：寬度 < 768px】                       */
-/* 特點：按鈕自適應換行、加大觸控點擊面積、防止文字擠壓     */
 /* ========================================================= */
 @media (max-width: 767px) {
     div[data-testid="stRadio"] {
@@ -87,14 +85,13 @@ div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
     }
     div[data-testid="stRadio"] div[role="radiogroup"] {
         display: grid !important;
-        grid-template-columns: repeat(2, 1fr) !important; /* 手機上一排 2 個按鈕 */
+        grid-template-columns: repeat(2, 1fr) !important;
         gap: 8px !important;
         background: transparent !important;
         padding: 0 !important;
         border: none !important;
         margin-bottom: 16px !important;
     }
-    /* 最後一個按鈕（進階數據辭典）跨滿整行 */
     div[data-testid="stRadio"] div[role="radiogroup"] > label:last-child {
         grid-column: span 2 !important;
     }
@@ -130,7 +127,6 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p {
 }
 </style>
 """
-
 st.markdown(top_nav_style, unsafe_allow_html=True)
 
 # ----------------- 時間與數值格式化工具函式 -----------------
@@ -225,15 +221,18 @@ def deduplicate_columns(df):
     df.columns = new_cols
     return df
 
-def find_file_fuzzy(keyword):
+# ----------------- 支援資料夾分流的智慧找檔函式 -----------------
+def find_file_in_folders(candidate_dirs, keyword):
     keyword_clean = keyword.lower().strip()
-    for fname in os.listdir('.'):
-        fname_lower = fname.lower()
-        if keyword_clean in fname_lower and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
-            return fname
+    for d in candidate_dirs:
+        if os.path.exists(d):
+            for fname in os.listdir(d):
+                fname_lower = fname.lower()
+                if keyword_clean in fname_lower and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
+                    return os.path.join(d, fname)
     return None
 
-def find_team_file(team_name):
+def find_team_file_in_folders(candidate_dirs, team_name):
     team_keywords = {
         "福爾摩沙夢想家": ["夢想家", "福爾摩沙"],
         "新北國王": ["國王"],
@@ -244,10 +243,12 @@ def find_team_file(team_name):
         "新竹御嵿攻城獅": ["攻城獅", "攻城", "御嵿"]
     }
     kws = team_keywords.get(team_name, [team_name])
-    for fname in os.listdir('.'):
-        fname_lower = fname.lower()
-        if any(kw.lower() in fname_lower for kw in kws) and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
-            return fname
+    for d in candidate_dirs:
+        if os.path.exists(d):
+            for fname in os.listdir(d):
+                fname_lower = fname.lower()
+                if any(kw.lower() in fname_lower for kw in kws) and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
+                    return os.path.join(d, fname)
     return None
 
 # ----------------- 總表拆解解析 -----------------
@@ -414,8 +415,8 @@ def extract_pbp_blocks(filepath):
 
 # ----------------- 取得球員母表數據 -----------------
 @st.cache_data(ttl=300)
-def get_master_players():
-    f_master = find_file_fuzzy("進階數據與戰力評級總表")
+def get_master_players(candidate_dirs):
+    f_master = find_file_in_folders(candidate_dirs, "進階數據與戰力評級總表")
     if f_master:
         try:
             xls = pd.ExcelFile(f_master)
@@ -429,7 +430,7 @@ def get_master_players():
         except Exception:
             pass
 
-    f_csv = find_file_fuzzy("全聯盟球員進階數據總表")
+    f_csv = find_file_in_folders(candidate_dirs, "全聯盟球員進階數據總表")
     if f_csv:
         try:
             return clean_dataframe_times(deduplicate_columns(pd.read_csv(f_csv)))
@@ -468,18 +469,39 @@ def calculate_radar_scores(row):
     return [round(score_pts, 1), round(score_eff, 1), round(score_3p, 1), round(score_ast, 1), round(score_reb, 1), round(score_def, 1)]
 
 # =========================================================================
-# 頁首橫幅與頂部導航列 (Top Navigation Bar)
+# 頁首橫幅
 # =========================================================================
 st.markdown(
     """
-    <div style="text-align: center; margin-top: -30px; margin-bottom: 20px;">
+    <div style="text-align: center; margin-top: -30px; margin-bottom: 12px;">
         <h1 style="font-size: 2.2rem; margin-bottom: 6px; letter-spacing: 1px;">🏀 TPBL 職業籃球進階數據與球探分析系統</h1>
-        <p style="color: #9E9E9E; font-size: 1.05rem; margin: 0;">2026-2027 例行賽即時戰力、進階四要素、On/Off 陣容與球員象限</p>
+        <p style="color: #9E9E9E; font-size: 1.05rem; margin: 0;">2026-2027 即時戰力、進階四要素、On/Off 陣容與球員效率象限</p>
     </div>
     """,
     unsafe_allow_html=True
 )
 
+# =========================================================================
+# 賽季階段切換開關 (Season Stage Selector)
+# =========================================================================
+stage_col1, stage_col2, stage_col3 = st.columns([1, 2, 1])
+with stage_col2:
+    stage_selection = st.radio(
+        "選擇賽季階段",
+        ["🏆 2026-2027 例行賽", "🔥 2026-2027 季前熱身賽"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+
+# 依選擇設定資料夾搜尋優先順序 (支援子資料夾與根目錄 fallback)
+if stage_selection == "🏆 2026-2027 例行賽":
+    active_dirs = ["data/season2026", "season2026", "."]
+else:
+    active_dirs = ["data/preseason2026", "preseason2026", "."]
+
+# =========================================================================
+# 頂部導航列 (Top Navigation Bar)
+# =========================================================================
 MENU_SUMMARY = "🏆 7隊戰力評級"
 MENU_SCATTER = "🎯 主力效率象限圖"
 MENU_PBP = "⚡ 各隊 PBP 陣容與 On/Off"
@@ -497,10 +519,10 @@ nav_selection = st.radio(
 # 分頁 1：7 隊戰力評級與攻防總評
 # =========================================================================
 if nav_selection == MENU_SUMMARY:
-    st.subheader("🏆 各隊戰力評級與進階攻防總評")
+    st.subheader(f"🏆 {stage_selection} — 各隊戰力評級與進階攻防總評")
     st.markdown("以四要素 (Four Factors)、節奏 (Pace) 及百回合進攻效率 (ORtg) 標準化評估各隊戰力與教練戰術。")
 
-    sum_file = find_file_fuzzy("summary") or find_file_fuzzy("7隊戰力")
+    sum_file = find_file_in_folders(active_dirs, "summary") or find_file_in_folders(active_dirs, "戰力評級總表")
     if sum_file:
         block_a, block_b = parse_summary_sheet(sum_file)
 
@@ -512,7 +534,7 @@ if nav_selection == MENU_SUMMARY:
             for _, row in block_b.iterrows():
                 team_name = str(row.iloc[0]) if len(row) > 0 else "球隊"
                 if team_name and team_name != "nan" and "區塊" not in team_name:
-                    record = str(row.iloc[1]) if len(row) > 1 else "尚未出賽"
+                    record = str(row.iloc[1]) if len(row) > 1 else "出賽"
                     with st.expander(f"🏀 {team_name} — 戰績：{record}", expanded=True):
                         col_names = [str(c) for c in block_b.columns]
                         for c_idx, c_name in enumerate(col_names[2:], start=2):
@@ -525,16 +547,16 @@ if nav_selection == MENU_SUMMARY:
                                     unsafe_allow_html=True
                                 )
     else:
-        st.warning("⚠️ 找不到總表檔案（`tpbl_summary.xlsx`）。")
+        st.warning(f"⚠️ 找不到該階段的總表檔案（請確認已將總表放進 `{active_dirs[0]}` 或根目錄）。")
 
 # =========================================================================
 # 分頁 2：USG% vs TS% 散佈圖 (Plotly 互動圖表)
 # =========================================================================
 elif nav_selection == MENU_SCATTER:
-    st.subheader("🎯 主力球員效率象限圖：球權使用率 (USG%) vs 真實命中率 (TS%)")
-    st.markdown("氣泡大小代表單場綜合表現值 (**GmSc**)，右上角為高產量且高效率之核心神獸。支援滑鼠懸停查看球員詳情與縮放。")
+    st.subheader(f"🎯 {stage_selection} — 主力球員效率象限圖：球權使用率 (USG%) vs 真實命中率 (TS%)")
+    st.markdown("氣泡大小代表單場綜合表現值 (**GmSc**)，右上角為高產量且高效率之核心神獸。")
 
-    df_players = get_master_players()
+    df_players = get_master_players(active_dirs)
 
     if not df_players.empty and '球員名' in df_players.columns:
         pts_col = '總得分' if '總得分' in df_players.columns else ('得分' if '得分' in df_players.columns else None)
@@ -631,19 +653,19 @@ elif nav_selection == MENU_SCATTER:
         else:
             st.warning("⚠️ 目前篩選條件下無符合球員。")
     else:
-        st.info("💡 尚未讀取到《全聯盟球員進階數據總表》。")
+        st.info("💡 尚未讀取到球員進階數據母表。")
 
 # =========================================================================
 # 分頁 3：各隊 PBP 陣容與 On/Off 深入分析
 # =========================================================================
 elif nav_selection == MENU_PBP:
-    st.subheader("⚡ 各隊 Play-by-Play 陣容組合與主力 On/Off 淨勝分")
-    st.markdown("由官方逐球時間段 (Stints) 精確解析各隊【賽季累積主力 On/Off 總榜】、【賽季最佳五人陣容】與【雙洋將化學效應】。")
+    st.subheader(f"⚡ {stage_selection} — 各隊 Play-by-Play 陣容組合與主力 On/Off 淨勝分")
+    st.markdown("由逐球時間段 (Stints) 精確解析各隊【主力 On/Off 總榜】、【賽季最佳五人陣容】與【雙洋將化學效應】。")
 
     team_options = ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
     selected_team = st.selectbox("選擇要深入分析的球隊", team_options)
 
-    target_file = find_team_file(selected_team) or find_file_fuzzy(selected_team)
+    target_file = find_team_file_in_folders(active_dirs, selected_team)
 
     if target_file:
         blocks, box_df = extract_pbp_blocks(target_file)
@@ -670,16 +692,16 @@ elif nav_selection == MENU_PBP:
             with st.expander(f"📋 查看 {selected_team} 基礎攻守數據表 (Box Score)", expanded=False):
                 st.dataframe(box_df, use_container_width=True, hide_index=True)
     else:
-        st.warning(f"⚠️ 找不到 {selected_team} 的 Excel 檔案。")
+        st.warning(f"⚠️ 找不到 {selected_team} 的專屬數據檔案。")
 
 # =========================================================================
-# 分頁 4：球員戰力卡與雙人對決 (分級選擇 + 大字號醒目排版)
+# 分頁 4：球員戰力卡與雙人對決
 # =========================================================================
 elif nav_selection == MENU_CARD:
-    st.subheader("🃏 球員戰力卡與雙雄對決 (Player Card & Head-to-Head)")
-    st.markdown("依球隊輕鬆篩選球員，檢視六維戰力雷達圖與高階球探卡，並可加入另一名球員展開對照 PK。")
+    st.subheader(f"🃏 {stage_selection} — 球員戰力卡與雙雄對決 (Player Card & Head-to-Head)")
+    st.markdown("依球隊篩選球員，檢視六維戰力雷達圖與高階球探卡，並可加入另一名球員展開對照 PK。")
 
-    df_players = get_master_players()
+    df_players = get_master_players(active_dirs)
 
     if not df_players.empty and '球員名' in df_players.columns:
         all_teams = sorted(list(df_players['球隊'].dropna().unique())) if '球隊' in df_players.columns else ["全隊伍"]
@@ -780,7 +802,7 @@ elif nav_selection == MENU_CARD:
                 """
                 st.markdown(html_badges, unsafe_allow_html=True)
 
-                note_val = p1_row.get('備註/短評', p1_row.get('備註 / 例行賽表現重點', '暫無備註'))
+                note_val = p1_row.get('備註/短評', p1_row.get('備註 / 例行賽表現重點', p1_row.get('備註 / 熱身賽表現重點', '暫無備註')))
                 st.info(f"💡 **教練與球探備註**：\n\n{note_val}")
 
         else:
@@ -863,7 +885,7 @@ elif nav_selection == MENU_CARD:
                 
                 st.caption("💡 提示：可切換不同球員組合，觀察不同體系後衛或禁區長人之間的風格差異。")
     else:
-        st.info("💡 尚未讀取到《全聯盟球員進階數據總表》，請確認專案中存在球員母表。")
+        st.info("💡 尚未讀取到球員數據母表。")
 
 # =========================================================================
 # 分頁 5：進階數據辭典與公式附錄

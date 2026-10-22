@@ -251,69 +251,32 @@ def find_team_file_in_folders(candidate_dirs, team_name):
                     return os.path.join(d, fname)
     return None
 
-# ----------------- 總表拆解解析 -----------------
-def parse_summary_sheet(filepath):
-    try:
-        if filepath.lower().endswith('.csv'):
-            df_raw = pd.read_csv(filepath, header=None)
-        else:
-            df_raw = pd.read_excel(filepath, sheet_name=0, header=None)
-    except Exception:
-        return pd.DataFrame(), pd.DataFrame()
+# ----------------- 取得球員母表數據 (智慧適配 1~5 列任意表頭) -----------------
+@st.cache_data(ttl=300)
+def get_master_players(candidate_dirs):
+    f_master = find_file_in_folders(candidate_dirs, "進階數據與戰力評級總表")
+    if f_master:
+        try:
+            xls = pd.ExcelFile(f_master)
+            for s in xls.sheet_names:
+                df_raw = pd.read_excel(f_master, sheet_name=s, header=None)
+                # 掃描前 8 行，找出哪一行有「球員名」
+                for r_idx in range(min(8, len(df_raw))):
+                    row_vals = [str(x).strip() for x in df_raw.iloc[r_idx].values if pd.notna(x)]
+                    if '球員名' in row_vals:
+                        df = pd.read_excel(f_master, sheet_name=s, header=r_idx)
+                        return clean_dataframe_times(deduplicate_columns(df))
+        except Exception:
+            pass
 
-    if df_raw is None or df_raw.empty:
-        return pd.DataFrame(), pd.DataFrame()
+    f_csv = find_file_in_folders(candidate_dirs, "全聯盟球員進階數據總表")
+    if f_csv:
+        try:
+            return clean_dataframe_times(deduplicate_columns(pd.read_csv(f_csv)))
+        except Exception:
+            pass
 
-    row_block_a_title = None
-    row_block_b_title = None
-
-    for idx, row in df_raw.iterrows():
-        row_str = " ".join([str(v) for v in row.values if pd.notna(v)])
-        if "【區塊 A" in row_str or "區塊 A" in row_str:
-            row_block_a_title = idx
-        elif "【區塊 B" in row_str or "區塊 B" in row_str:
-            row_block_b_title = idx
-
-    if row_block_a_title is not None:
-        header_a_idx = row_block_a_title + 1
-        end_a = row_block_b_title if row_block_b_title is not None else header_a_idx + 8
-        block_a = df_raw.iloc[header_a_idx + 1 : end_a].copy()
-        block_a.columns = [str(c).strip() for c in df_raw.iloc[header_a_idx].tolist()]
-        block_a = clean_dataframe_times(deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)))
-    else:
-        header_a_idx = None
-        for idx, row in df_raw.iterrows():
-            row_str = " ".join([str(v) for v in row.values if pd.notna(v)])
-            if "團隊總得分" in row_str or "團隊回合數" in row_str:
-                header_a_idx = idx
-                break
-        if header_a_idx is not None:
-            block_a = df_raw.iloc[header_a_idx + 1 : header_a_idx + 8].copy()
-            block_a.columns = [str(c).strip() for c in df_raw.iloc[header_a_idx].tolist()]
-            block_a = clean_dataframe_times(deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)))
-        else:
-            block_a = pd.DataFrame()
-
-    if row_block_b_title is not None:
-        header_b_idx = row_block_b_title + 1
-        block_b = df_raw.iloc[header_b_idx + 1 : header_b_idx + 8].copy()
-        block_b.columns = [str(c).strip() for c in df_raw.iloc[header_b_idx].tolist()]
-        block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
-    else:
-        header_b_idx = None
-        for idx, row in df_raw.iterrows():
-            row_str = " ".join([str(v) for v in row.values if pd.notna(v)])
-            if "高球權核心" in row_str or "高效終結者" in row_str:
-                header_b_idx = idx
-                break
-        if header_b_idx is not None:
-            block_b = df_raw.iloc[header_b_idx + 1 : header_b_idx + 8].copy()
-            block_b.columns = [str(c).strip() for c in df_raw.iloc[header_b_idx].tolist()]
-            block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
-        else:
-            block_b = pd.DataFrame()
-
-    return block_a, block_b
+    return pd.DataFrame()
 
 # ----------------- 提取各隊專屬 PBP 表格 -----------------
 def extract_pbp_blocks(filepath):

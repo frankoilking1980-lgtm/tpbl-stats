@@ -328,21 +328,21 @@ def extract_pbp_blocks(filepath):
     r_lineup, c_lineup = None, None
     r_duo, c_duo = None, None
 
-    for r in range(len(df)):
+    for r in range(min(10, len(df))):
         for c in range(len(df.columns)):
             val = str(df.iloc[r, c]).strip()
-            if "【" in val:
-                if "on/off" in val.lower() or "淨影響力" in val:
-                    if r_onoff is None: r_onoff, c_onoff = r, c
-                elif "五人陣容" in val:
-                    if r_lineup is None: r_lineup, c_lineup = r, c
-                elif "雙洋將" in val or "化學效應" in val:
-                    if r_duo is None: r_duo, c_duo = r, c
+            if "on/off" in val.lower() or "淨影響力" in val:
+                if r_onoff is None: r_onoff, c_onoff = r, c
+            elif "五人陣容" in val:
+                if r_lineup is None: r_lineup, c_lineup = r, c
+            elif "雙洋將" in val or "化學效應" in val or "洋將搭檔" in val:
+                if r_duo is None: r_duo, c_duo = r, c
 
     def extract_subtable(title_r, title_c):
         if title_r is None or title_c is None:
             return pd.DataFrame()
-        header_row_idx = title_r + 1
+        # 標題可能在 title_r，表頭在 title_r 或 title_r + 1
+        header_row_idx = title_r if ("陣容" in str(df.iloc[title_r, title_c]) or "球員名" in str(df.iloc[title_r, title_c])) else title_r + 1
         if header_row_idx >= len(df):
             return pd.DataFrame()
         
@@ -361,7 +361,7 @@ def extract_pbp_blocks(filepath):
         data_rows = []
         for cur_r in range(header_row_idx + 1, min(len(df), header_row_idx + 35)):
             first_val = str(df.iloc[cur_r, title_c]).strip()
-            if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
+            if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or "【" in first_val:
                 break
             data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
             
@@ -379,20 +379,18 @@ def extract_pbp_blocks(filepath):
     box_header_row = None
     for r in range(min(12, len(df))):
         row_str = " ".join([str(v) for v in df.iloc[r, :8] if pd.notna(v)])
-        if "球員名" in row_str and ("得分" in row_str or "出賽" in row_str):
+        if "球員名" in row_str and ("得分" in row_str or "出賽" in row_str or "背號" in row_str):
             box_header_row = r
             break
 
     if box_header_row is not None:
-        end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
+        end_box = len(df)
         box_df = df.iloc[box_header_row + 1 : end_box].copy()
         raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
         valid_cols_idx = []
         seen = set()
         for idx_h, h in enumerate(raw_headers):
-            if "Unnamed" in h or h == "" or "nan" in h or "【" in h:
-                break
-            if h in seen:
+            if "Unnamed" in h or h == "" or "nan" in h or (idx_h > 5 and h in seen):
                 break
             seen.add(h)
             valid_cols_idx.append(idx_h)

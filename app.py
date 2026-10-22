@@ -559,21 +559,25 @@ st.markdown(
 )
 
 # =========================================================================
-# 賽季階段切換開關 (Season Stage Selector) - 靠左對齊
+# 賽季階段切換下拉選單 (Season Selector - Dropdown)
 # =========================================================================
-stage_col1, _ = st.columns([1.2, 2])
-with stage_col1:
-    stage_selection = st.radio(
+stage_mapping = {
+    "🏆 2026-2027 例行賽": ["data/season2026", "season2026", "."],
+    "🔥 2026-2027 季前熱身賽": ["data/preseason2026", "preseason2026", "."],
+    "📜 2025-2026 例行賽": ["data/season2025", "season2025", "."]
+}
+
+sel_col1, _ = st.columns([1.3, 3])
+with sel_col1:
+    stage_selection = st.selectbox(
         "選擇賽季階段",
-        ["🏆 2026-2027 例行賽", "🔥 2026-2027 季前熱身賽"],
-        horizontal=True,
+        options=list(stage_mapping.keys()),
+        index=0,
         label_visibility="collapsed"
     )
 
-if stage_selection == "🏆 2026-2027 例行賽":
-    active_dirs = ["data/season2026", "season2026", "."]
-else:
-    active_dirs = ["data/preseason2026", "preseason2026", "."]
+active_dirs = stage_mapping[stage_selection]
+
 # =========================================================================
 # 頂部導航列 (Top Navigation Bar)
 # =========================================================================

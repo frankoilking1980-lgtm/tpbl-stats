@@ -17,8 +17,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ----------------- 頂部現代風格：電腦/手機雙端完全自適應 CSS -----------------
-top_nav_style = """
+# ----------------- 頂部導航與主題基礎 CSS -----------------
+base_style = """
 <style>
 /* 1. 徹底隱藏原生 Header、工具列、頁尾與嵌入白條 */
 header, [data-testid="stHeader"] {display: none !important;}
@@ -37,82 +37,6 @@ div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
     display: none !important;
 }
 
-/* ========================================================= */
-/* 【電腦螢幕專屬樣式：寬度 >= 768px】                      */
-/* ========================================================= */
-@media (min-width: 768px) {
-    div[data-testid="stRadio"] {
-        width: 100% !important;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] {
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: space-between !important;
-        width: 100% !important;
-        gap: 12px !important;
-        background: rgba(255, 255, 255, 0.03) !important;
-        padding: 8px 12px !important;
-        border-radius: 14px !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        margin-bottom: 20px !important;
-    }
-    div[data-testid="stRadio"] label[data-baseweb="radio"] {
-        flex: 1 1 0 !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        text-align: center !important;
-        background-color: rgba(255, 255, 255, 0.05) !important;
-        padding: 12px 10px !important;
-        border-radius: 9px !important;
-        cursor: pointer !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        transition: all 0.2s ease !important;
-    }
-    div[data-testid="stRadio"] label[data-baseweb="radio"] p {
-        font-size: 1.12rem !important;
-        font-weight: 600 !important;
-        margin: 0 !important;
-        white-space: nowrap !important;
-    }
-}
-
-/* ========================================================= */
-/* 【手機螢幕專屬樣式：寬度 < 768px】                       */
-/* ========================================================= */
-@media (max-width: 767px) {
-    div[data-testid="stRadio"] {
-        width: 100% !important;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] {
-        display: grid !important;
-        grid-template-columns: repeat(2, 1fr) !important;
-        gap: 8px !important;
-        background: transparent !important;
-        padding: 0 !important;
-        border: none !important;
-        margin-bottom: 16px !important;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] > label:last-child {
-        grid-column: span 2 !important;
-    }
-    div[data-testid="stRadio"] label[data-baseweb="radio"] {
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        background-color: rgba(255, 255, 255, 0.06) !important;
-        padding: 10px 6px !important;
-        border-radius: 8px !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    }
-    div[data-testid="stRadio"] label[data-baseweb="radio"] p {
-        font-size: 0.92rem !important;
-        font-weight: 600 !important;
-        margin: 0 !important;
-        text-align: center !important;
-    }
-}
-
 /* 4. 通用：滑鼠懸停與選中高亮效果 */
 div[data-testid="stRadio"] label[data-baseweb="radio"]:hover {
     background-color: rgba(0, 230, 118, 0.15) !important;
@@ -128,7 +52,137 @@ div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p {
 }
 </style>
 """
-st.markdown(top_nav_style, unsafe_allow_html=True)
+st.markdown(base_style, unsafe_allow_html=True)
+
+# ----------------- 賽季階段與外觀主題切換列 -----------------
+stage_mapping = {
+    "🏆 2026-2027 例行賽": ["data/season2026", "season2026", "."],
+    "🔥 2026-2027 季前熱身賽": ["data/preseason2026", "preseason2026", "."],
+    "📜 2025-2026 例行賽": ["data/season2025", "season2025", "."]
+}
+
+col_sel_season, col_sel_theme, _ = st.columns([1.3, 0.9, 2])
+with col_sel_season:
+    stage_selection = st.selectbox(
+        "選擇賽季階段",
+        options=list(stage_mapping.keys()),
+        index=0,
+        label_visibility="collapsed"
+    )
+
+with col_sel_theme:
+    theme_choice = st.radio(
+        "外觀主題切換",
+        ["🌙 深色", "☀️ 淺色"],
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+
+is_light = (theme_choice == "☀️ 淺色")
+plotly_template = "plotly_white" if is_light else "plotly_dark"
+active_dirs = stage_mapping[stage_selection]
+
+# ----------------- 動態外觀主題樣式注入 (Dark / Light Mode) -----------------
+if is_light:
+    theme_css = """
+    <style>
+    .stApp {
+        background-color: #F8F9FA !important;
+        color: #1A1A1A !important;
+    }
+    h1, h2, h3, h4, h5, h6, p, span, label {
+        color: #1A1A1A !important;
+    }
+    div[data-testid="stRadio"] > div {
+        background: rgba(0, 0, 0, 0.04) !important;
+        border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] {
+        background-color: rgba(0, 0, 0, 0.03) !important;
+        border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] p {
+        color: #333333 !important;
+    }
+    @media (min-width: 768px) {
+        div[data-testid="stRadio"] { width: 100% !important; }
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            display: flex !important; flex-direction: row !important; justify-content: space-between !important;
+            width: 100% !important; gap: 12px !important; padding: 8px 12px !important; border-radius: 14px !important;
+            margin-bottom: 20px !important;
+        }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] {
+            flex: 1 1 0 !important; display: flex !important; justify-content: center !important; align-items: center !important;
+            padding: 12px 10px !important; border-radius: 9px !important;
+        }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] p { font-size: 1.12rem !important; font-weight: 600 !important; }
+    }
+    @media (max-width: 767px) {
+        div[data-testid="stRadio"] { width: 100% !important; }
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important;
+            background: transparent !important; padding: 0 !important; border: none !important; margin-bottom: 16px !important;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] > label:last-child { grid-column: span 2 !important; }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] {
+            display: flex !important; justify-content: center !important; align-items: center !important;
+            padding: 10px 6px !important; border-radius: 8px !important;
+        }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] p { font-size: 0.92rem !important; font-weight: 600 !important; }
+    }
+    </style>
+    """
+else:
+    theme_css = """
+    <style>
+    .stApp {
+        background-color: #0E1117 !important;
+        color: #FFFFFF !important;
+    }
+    h1, h2, h3, h4, h5, h6, p, span, label {
+        color: #FFFFFF !important;
+    }
+    div[data-testid="stRadio"] > div {
+        background: rgba(255, 255, 255, 0.03) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] p {
+        color: #FFFFFF !important;
+    }
+    @media (min-width: 768px) {
+        div[data-testid="stRadio"] { width: 100% !important; }
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            display: flex !important; flex-direction: row !important; justify-content: space-between !important;
+            width: 100% !important; gap: 12px !important; padding: 8px 12px !important; border-radius: 14px !important;
+            margin-bottom: 20px !important;
+        }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] {
+            flex: 1 1 0 !important; display: flex !important; justify-content: center !important; align-items: center !important;
+            padding: 12px 10px !important; border-radius: 9px !important;
+        }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] p { font-size: 1.12rem !important; font-weight: 600 !important; }
+    }
+    @media (max-width: 767px) {
+        div[data-testid="stRadio"] { width: 100% !important; }
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important;
+            background: transparent !important; padding: 0 !important; border: none !important; margin-bottom: 16px !important;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] > label:last-child { grid-column: span 2 !important; }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] {
+            display: flex !important; justify-content: center !important; align-items: center !important;
+            padding: 10px 6px !important; border-radius: 8px !important;
+        }
+        div[data-testid="stRadio"] label[data-baseweb="radio"] p { font-size: 0.92rem !important; font-weight: 600 !important; }
+    }
+    </style>
+    """
+st.markdown(theme_css, unsafe_allow_html=True)
 
 # ----------------- 時間與數值格式化工具函式 -----------------
 def clean_time_display(val):
@@ -188,7 +242,9 @@ def get_ast_to_ratio(row):
         return "0.00"
 
 def make_stat_badge_row(label, val):
-    return f'<div style="display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.08);"><span style="font-size: 1.05rem; font-weight: 600; color: #E0E0E0;">{label}</span><span style="font-size: 1.22rem; font-weight: 700; color: #00E676; background-color: rgba(0, 230, 118, 0.15); padding: 4px 14px; border-radius: 6px; letter-spacing: 0.5px;">{val}</span></div>'
+    text_c = "#333333" if is_light else "#E0E0E0"
+    border_c = "rgba(0,0,0,0.06)" if is_light else "rgba(255,255,255,0.08)"
+    return f'<div style="display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid {border_c};"><span style="font-size: 1.05rem; font-weight: 600; color: {text_c};">{label}</span><span style="font-size: 1.22rem; font-weight: 700; color: #00E676; background-color: rgba(0, 230, 118, 0.15); padding: 4px 14px; border-radius: 6px; letter-spacing: 0.5px;">{val}</span></div>'
 
 def clean_dataframe_times(df):
     if df is None or df.empty:
@@ -247,7 +303,18 @@ def find_team_file_in_folders(candidate_dirs, team_name):
                     return os.path.join(d, fname)
     return None
 
-# ----------------- 單場對決雙向長條圖組件 (支援命中數與比率解析) -----------------
+# ----------------- 球隊代表色配置 -----------------
+team_color_map = {
+    "新北國王": "#FFC107",       # 金黃
+    "福爾摩沙夢想家": "#00E676",   # 亮綠
+    "高雄全家海神": "#00B0FF",     # 水藍
+    "新北中信特攻": "#FFD600",     # 閃電黃
+    "臺北台新戰神": "#FF5252",     # 戰神紅
+    "桃園台啤永豐雲豹": "#AB47BC", # 紫金
+    "新竹御嵿攻城獅": "#EA80FC"    # 紫色
+}
+
+# ----------------- 單場對決雙向長條圖組件 -----------------
 def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True):
     def parse_stat(v):
         s = str(v).strip().replace('%', '').replace('+', '')
@@ -268,17 +335,21 @@ def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True
     pct_a = min(100.0, max(8.0, (num_a / tot) * 100.0))
     pct_h = min(100.0, max(8.0, (num_h / tot) * 100.0))
     
+    lose_bar_color = "#BDBDBD" if is_light else "#616161"
+    
     if higher_is_better:
-        color_a = "#00E676" if num_a > num_h else "#757575"
-        color_h = "#00E676" if num_h > num_a else "#757575"
+        color_a = "#00E676" if num_a > num_h else lose_bar_color
+        color_h = "#00E676" if num_h > num_a else lose_bar_color
     else:
-        color_a = "#00E676" if num_a < num_h else "#757575"
-        color_h = "#00E676" if num_h < num_a else "#757575"
+        color_a = "#00E676" if num_a < num_h else lose_bar_color
+        color_h = "#00E676" if num_h < num_a else lose_bar_color
 
     disp_a = f"{val_away:.1f}%" if is_pct and isinstance(val_away, (int, float)) else str(val_away)
     disp_h = f"{val_home:.1f}%" if is_pct and isinstance(val_home, (int, float)) else str(val_home)
     
-    return f'<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem;"><div style="width: 16%; text-align: right; font-weight: 700; color: {color_a}; font-size: 1.05rem;">{disp_a}</div><div style="width: 26%; display: flex; justify-content: flex-end; padding-right: 8px;"><div style="width: {pct_a:.1f}%; background: {color_a}; height: 8px; border-radius: 4px;"></div></div><div style="width: 32%; text-align: center; color: #BBB; font-weight: 600; white-space: nowrap; font-size: 0.9rem;">{label}</div><div style="width: 26%; display: flex; justify-content: flex-start; padding-left: 8px;"><div style="width: {pct_h:.1f}%; background: {color_h}; height: 8px; border-radius: 4px;"></div></div><div style="width: 16%; text-align: left; font-weight: 700; color: {color_h}; font-size: 1.05rem;">{disp_h}</div></div>'
+    label_c = "#444" if is_light else "#BBB"
+    
+    return f'<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem;"><div style="width: 16%; text-align: right; font-weight: 700; color: {color_a}; font-size: 1.05rem;">{disp_a}</div><div style="width: 26%; display: flex; justify-content: flex-end; padding-right: 8px;"><div style="width: {pct_a:.1f}%; background: {color_a}; height: 8px; border-radius: 4px;"></div></div><div style="width: 32%; text-align: center; color: {label_c}; font-weight: 600; white-space: nowrap; font-size: 0.9rem;">{label}</div><div style="width: 26%; display: flex; justify-content: flex-start; padding-left: 8px;"><div style="width: {pct_h:.1f}%; background: {color_h}; height: 8px; border-radius: 4px;"></div></div><div style="width: 16%; text-align: left; font-weight: 700; color: {color_h}; font-size: 1.05rem;">{disp_h}</div></div>'
 
 # ----------------- 分離五人陣容與核心搭檔表格 -----------------
 def split_lineup_and_pairs(df_lineup):
@@ -303,21 +374,56 @@ def split_lineup_and_pairs(df_lineup):
     df_pairs = df_pairs.dropna(subset=[col0]).dropna(how='all', axis=1)
     return df_5man, df_pairs
 
-# ----------------- 單場比賽工作表數據抽取器 -----------------
-def extract_single_game_data(filepath, sheet_name):
+# ----------------- 精確單場工作表抽取器 (五重精準防禦：杜絕 G01/G02 串場錯誤) -----------------
+def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
     if not filepath or not os.path.exists(filepath):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
     try:
         xls = pd.ExcelFile(filepath)
+        all_sheets = xls.sheet_names
         matched_sheet = None
-        for s in xls.sheet_names:
-            if sheet_name == s or sheet_name in s or s in sheet_name:
-                matched_sheet = s
-                break
-            if "vs" in s and any(k in s for k in sheet_name.split() if len(k) >= 2):
-                matched_sheet = s
-                break
-                
+
+        # 1. 完全相同
+        if sheet_name in all_sheets:
+            matched_sheet = sheet_name
+
+        # 2. 去除所有空格與標點比對
+        if not matched_sheet:
+            clean_target = re.sub(r'[\s\.\-_/]', '', sheet_name).lower()
+            for s in all_sheets:
+                if re.sub(r'[\s\.\-_/]', '', s).lower() == clean_target:
+                    matched_sheet = s
+                    break
+
+        # 3. 同時比對 game_id (如 G02) 與 日期 (如 10.18) 雙重強鎖定
+        if not matched_sheet:
+            gid = game_id.lower().strip() if game_id else ""
+            date_clean = re.sub(r'^(2025|2026|2027)[\.\-_/]', '', game_date).strip() if game_date else ""
+            for s in all_sheets:
+                s_lower = s.lower()
+                has_id = (gid in s_lower) if gid else False
+                has_date = (game_date in s) or (date_clean in s.replace('/', '.').replace('-', '.')) if date_clean else False
+                if has_id and has_date:
+                    matched_sheet = s
+                    break
+
+        # 4. 單獨匹配 game_id（確保是獨立單詞）
+        if not matched_sheet and game_id:
+            gid = game_id.lower().strip()
+            for s in all_sheets:
+                words = re.split(r'[\s\.\-_/]', s.lower())
+                if "vs" in s.lower() and gid in words:
+                    matched_sheet = s
+                    break
+
+        # 5. 單獨匹配日期
+        if not matched_sheet and game_date:
+            date_clean = re.sub(r'^(2025|2026|2027)[\.\-_/]', '', game_date).strip()
+            for s in all_sheets:
+                if "vs" in s.lower() and (game_date in s or (date_clean and date_clean in s.replace('/', '.').replace('-', '.'))):
+                    matched_sheet = s
+                    break
+
         if not matched_sheet:
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
 
@@ -348,6 +454,9 @@ def extract_single_game_data(filepath, sheet_name):
             p_name = df.iloc[r, 1] if len(df.columns) > 1 else None
             if pd.isna(p_name) or str(p_name).strip() == "" or str(p_name) == "nan":
                 break
+            # 排除合計或團隊行
+            if any(k in str(p_name) for k in ['合計', '總計', 'TEAM', '團隊', 'Team']):
+                continue
             box_rows.append([df.iloc[r, ci] for ci in box_col_idxs])
 
         box_df = pd.DataFrame(box_rows, columns=box_cols)
@@ -390,19 +499,38 @@ def extract_single_game_data(filepath, sheet_name):
         onoff_df = extract_sub(onoff_c) if onoff_c else pd.DataFrame()
         lineup_df = extract_sub(lineup_c) if lineup_c else pd.DataFrame()
 
-        # 3. 累加團隊統計
+        # 3. 累加團隊統計 (支援中文與英文標準欄位別名)
         team_stats = {}
-        for col in ['得分', '投籃命中', '投籃出手', '三分命中', '三分出手', '罰球命中', '罰球出手', '進攻籃板', '防守籃板', '籃板', '助攻', '抄截', '阻攻', '失誤', '犯規']:
-            if col in box_df.columns:
-                team_stats[col] = float(pd.to_numeric(box_df[col], errors='coerce').fillna(0).sum())
+        alias_map = {
+            '得分': ['得分', '總得分', 'PTS'],
+            '投籃命中': ['投籃命中', 'FGM'],
+            '投籃出手': ['投籃出手', 'FGA'],
+            '三分命中': ['三分命中', '3PM'],
+            '三分出手': ['三分出手', '3PA'],
+            '罰球命中': ['罰球命中', 'FTM'],
+            '罰球出手': ['罰球出手', 'FTA'],
+            '進攻籃板': ['進攻籃板', 'OREB', '前場籃板'],
+            '防守籃板': ['防守籃板', 'DREB', '後場籃板'],
+            '籃板': ['籃板', 'REB', '總籃板'],
+            '助攻': ['助攻', 'AST'],
+            '抄截': ['抄截', 'STL'],
+            '阻攻': ['阻攻', 'BLK'],
+            '失誤': ['失誤', 'TOV', 'TO'],
+            '犯規': ['犯規', 'PF']
+        }
+
+        for stat_key, candidates in alias_map.items():
+            matched_c = next((c for c in candidates if c in box_df.columns), None)
+            if matched_c:
+                team_stats[stat_key] = float(pd.to_numeric(box_df[matched_c], errors='coerce').fillna(0).sum())
             else:
-                team_stats[col] = 0.0
+                team_stats[stat_key] = 0.0
 
         return box_df, onoff_df, lineup_df, team_stats
     except Exception:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
 
-# ----------------- 總表拆解解析 (自動探測表頭，相容各種註釋行) -----------------
+# ----------------- 總表拆解解析 -----------------
 def parse_summary_sheet(filepath):
     try:
         if filepath.lower().endswith('.csv'):
@@ -457,7 +585,7 @@ def parse_summary_sheet(filepath):
 
     return block_a, block_b
 
-# ----------------- 提取各隊專屬 PBP 表格 (雙模智慧解析) -----------------
+# ----------------- 提取各隊專屬 PBP 表格 -----------------
 def extract_pbp_blocks(filepath):
     if not filepath or not os.path.exists(filepath):
         return {}, pd.DataFrame()
@@ -732,35 +860,16 @@ def calculate_radar_scores(row):
 # =========================================================================
 # 頁首橫幅
 # =========================================================================
+banner_sub_c = "#666666" if is_light else "#9E9E9E"
 st.markdown(
-    """
-    <div style="text-align: center; margin-top: -30px; margin-bottom: 12px;">
+    f"""
+    <div style="text-align: center; margin-top: -24px; margin-bottom: 12px;">
         <h1 style="font-size: 2.2rem; margin-bottom: 6px; letter-spacing: 1px;">🏀 TPBL 職業籃球進階數據與球探分析系統</h1>
-        <p style="color: #9E9E9E; font-size: 1.05rem; margin: 0;">即時戰力、進階四要素、On/Off 陣容與球員效率象限分析</p>
+        <p style="color: {banner_sub_c}; font-size: 1.05rem; margin: 0;">即時戰力、進階四要素、On/Off 陣容與球員效率象限分析</p>
     </div>
     """,
     unsafe_allow_html=True
 )
-
-# =========================================================================
-# 賽季階段切換下拉選單 (Season Selector - Dropdown)
-# =========================================================================
-stage_mapping = {
-    "🏆 2026-2027 例行賽": ["data/season2026", "season2026", "."],
-    "🔥 2026-2027 季前熱身賽": ["data/preseason2026", "preseason2026", "."],
-    "📜 2025-2026 例行賽": ["data/season2025", "season2025", "."]
-}
-
-sel_col1, _ = st.columns([1.3, 3])
-with sel_col1:
-    stage_selection = st.selectbox(
-        "選擇賽季階段",
-        options=list(stage_mapping.keys()),
-        index=0,
-        label_visibility="collapsed"
-    )
-
-active_dirs = stage_mapping[stage_selection]
 
 # =========================================================================
 # 頂部導航列 (Top Navigation Bar) - 6 大核心分頁
@@ -825,8 +934,9 @@ if nav_selection == MENU_SUMMARY:
                             if "短評" in c_name:
                                 st.info(f"**{c_name}**：\n\n{val}")
                             else:
+                                badge_text_c = "#111111" if is_light else "#FFFFFF"
                                 st.markdown(
-                                    f'<div style="margin-bottom: 8px;"><span style="font-size: 1.05rem; font-weight: bold; color: #FFFFFF;">{c_name}：</span><span style="font-size: 1.25rem; font-weight: 600; color: #00E676; background-color: rgba(0, 230, 118, 0.12); padding: 3px 10px; border-radius: 6px; display: inline-block;">{val}</span></div>',
+                                    f'<div style="margin-bottom: 8px;"><span style="font-size: 1.05rem; font-weight: bold; color: {badge_text_c};">{c_name}：</span><span style="font-size: 1.25rem; font-weight: 600; color: #00E676; background-color: rgba(0, 230, 118, 0.12); padding: 3px 10px; border-radius: 6px; display: inline-block;">{val}</span></div>',
                                     unsafe_allow_html=True
                                 )
     else:
@@ -915,7 +1025,7 @@ elif nav_selection == MENU_SCATTER:
                     size_col: ':.1f',
                     '氣泡大小': False
                 },
-                template='plotly_dark'
+                template=plotly_template
             )
 
             avg_u = filtered['USG%'].mean()
@@ -940,11 +1050,12 @@ elif nav_selection == MENU_SCATTER:
                 annotation_font=dict(size=12, color="#FFD700")
             )
 
+            quad_text_color = "rgba(0,0,0,0.4)" if is_light else "rgba(255,255,255,0.4)"
             quadrant_annotations = [
-                dict(x=avg_u + 6, y=avg_t + 18, text="🔥 第一象限：高產高效核心", showarrow=False, font=dict(size=13, color="rgba(255,255,255,0.4)")),
-                dict(x=avg_u - 6, y=avg_t + 18, text="🎯 第二象限：高效終結者", showarrow=False, font=dict(size=13, color="rgba(255,255,255,0.4)")),
-                dict(x=avg_u - 6, y=avg_t - 15, text="🛡️ 第三象限：角色球員/低迷區", showarrow=False, font=dict(size=13, color="rgba(255,255,255,0.4)")),
-                dict(x=avg_u + 6, y=avg_t - 15, text="⚠️ 第四象限：低效強攻區", showarrow=False, font=dict(size=13, color="rgba(255,255,255,0.4)"))
+                dict(x=avg_u + 6, y=avg_t + 18, text="🔥 第一象限：高產高效核心", showarrow=False, font=dict(size=13, color=quad_text_color)),
+                dict(x=avg_u - 6, y=avg_t + 18, text="🎯 第二象限：高效終結者", showarrow=False, font=dict(size=13, color=quad_text_color)),
+                dict(x=avg_u - 6, y=avg_t - 15, text="🛡️ 第三象限：角色球員/低迷區", showarrow=False, font=dict(size=13, color=quad_text_color)),
+                dict(x=avg_u + 6, y=avg_t - 15, text="⚠️ 第四象限：低效強攻區", showarrow=False, font=dict(size=13, color=quad_text_color))
             ]
             for annot in quadrant_annotations:
                 fig.add_annotation(annot)
@@ -999,27 +1110,37 @@ elif nav_selection == MENU_GAME:
         away_score = int(cur_game.get('away_score', 0))
         home_score = int(cur_game.get('home_score', 0))
         sheet_name = cur_game.get('sheet_name', '')
+        cur_game_id = cur_game.get('game_id', '')
+        cur_game_date = cur_game.get('date', '')
 
-        color_away = "#00E676" if away_score > home_score else "#FFFFFF"
-        color_home = "#00E676" if home_score > away_score else "#FFFFFF"
+        color_away = "#00E676" if away_score > home_score else ("#222" if is_light else "#FFF")
+        color_home = "#00E676" if home_score > away_score else ("#222" if is_light else "#FFF")
+        
+        team_a_official = team_color_map.get(away_team, "#00E676")
+        team_h_official = team_color_map.get(home_team, "#00E676")
+
+        card_bg = "rgba(0, 0, 0, 0.03)" if is_light else "rgba(255, 255, 255, 0.03)"
+        card_border = "rgba(0, 0, 0, 0.1)" if is_light else "rgba(255, 255, 255, 0.1)"
+        text_title_c = "#111" if is_light else "#EEE"
+        text_sub_c = "#777" if is_light else "#888"
 
         # 頂部賽事記分板橫幅 (中間 G01 / FINAL / 日期 加大加粗排版)
         st.markdown(f"""
-        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; padding: 22px 16px; margin: 12px 0 24px 0;">
+        <div style="background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; padding: 22px 16px; margin: 12px 0 24px 0;">
             <div style="display: flex; justify-content: space-between; align-items: center; text-align: center;">
                 <div style="flex: 1.2;">
-                    <div style="color: #AAA; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; letter-spacing: 0.5px;">客隊 (AWAY)</div>
-                    <div style="font-size: 1.65rem; font-weight: 800; color: #FFFFFF; margin-bottom: 4px;">{away_team}</div>
+                    <div style="color: {text_sub_c}; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; letter-spacing: 0.5px;">客隊 (AWAY)</div>
+                    <div style="font-size: 1.65rem; font-weight: 800; color: {text_title_c}; margin-bottom: 4px;">{away_team}</div>
                     <div style="font-size: 3.4rem; font-weight: 900; color: {color_away}; line-height: 1.1;">{away_score}</div>
                 </div>
                 <div style="flex: 1.0; padding: 0 10px;">
                     <div style="display: inline-block; background: rgba(0, 230, 118, 0.2); color: #00E676; padding: 6px 18px; border-radius: 20px; font-weight: 800; font-size: 1.15rem; letter-spacing: 1px; margin-bottom: 8px; border: 1px solid rgba(0, 230, 118, 0.3);">{cur_game.get('status', 'FINAL')}</div>
-                    <div style="color: #FFFFFF; font-size: 2.3rem; font-weight: 900; letter-spacing: 2px; line-height: 1.1; margin-bottom: 4px;">{cur_game.get('game_id')}</div>
-                    <div style="color: #CCCCCC; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.5px;">{cur_game.get('date')} {cur_game.get('time', '')}</div>
+                    <div style="color: {text_title_c}; font-size: 2.3rem; font-weight: 900; letter-spacing: 2px; line-height: 1.1; margin-bottom: 4px;">{cur_game.get('game_id')}</div>
+                    <div style="color: {text_sub_c}; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.5px;">{cur_game.get('date')} {cur_game.get('time', '')}</div>
                 </div>
                 <div style="flex: 1.2;">
-                    <div style="color: #AAA; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; letter-spacing: 0.5px;">主隊 (HOME)</div>
-                    <div style="font-size: 1.65rem; font-weight: 800; color: #FFFFFF; margin-bottom: 4px;">{home_team}</div>
+                    <div style="color: {text_sub_c}; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; letter-spacing: 0.5px;">主隊 (HOME)</div>
+                    <div style="font-size: 1.65rem; font-weight: 800; color: {text_title_c}; margin-bottom: 4px;">{home_team}</div>
                     <div style="font-size: 3.4rem; font-weight: 900; color: {color_home}; line-height: 1.1;">{home_score}</div>
                 </div>
             </div>
@@ -1029,8 +1150,9 @@ elif nav_selection == MENU_GAME:
         away_file = find_team_file_in_folders(active_dirs, away_team)
         home_file = find_team_file_in_folders(active_dirs, home_team)
 
-        box_away, onoff_away, lineup_away, stats_away = extract_single_game_data(away_file, sheet_name)
-        box_home, onoff_home, lineup_home, stats_home = extract_single_game_data(home_file, sheet_name)
+        # 傳入 game_id 與 date 實施雙重精確鎖定，杜絕跨場次誤抓
+        box_away, onoff_away, lineup_away, stats_away = extract_single_game_data(away_file, sheet_name, cur_game_id, cur_game_date)
+        box_home, onoff_home, lineup_home, stats_home = extract_single_game_data(home_file, sheet_name, cur_game_id, cur_game_date)
 
         if box_away.empty and box_home.empty:
             st.warning(f"⚠️ 找不到該場次的工作表（請確認各隊 Excel 中是否包含名稱為 `{sheet_name}` 的工作表）。")
@@ -1068,7 +1190,23 @@ elif nav_selection == MENU_GAME:
             ftr_h = fta_h / fga_h if fga_h > 0 else 0.0
 
             st.markdown("#### ⚔️ 兩隊進階四要素與攻防效率雙向對決")
-            st.markdown(f'<div style="text-align: center; color: #888; margin-bottom: 12px; font-size: 1.05rem;">【客隊】<span style="color: #00E676; font-weight: bold;">{away_team}</span> vs 【主隊】<span style="color: #00E676; font-weight: bold;">{home_team}</span></div>', unsafe_allow_html=True)
+            
+            # 精準對齊的雙隊名稱橫幅 (客隊靠右對齊 42% 數據端點，主隊靠左對齊 42% 數據端點)
+            st.markdown(f"""
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0 16px 0; border-bottom: 2px solid {card_border}; margin-bottom: 18px;">
+                <div style="width: 42%; text-align: right; padding-right: 14px;">
+                    <span style="font-size: 1.65rem; font-weight: 900; color: {team_a_official}; letter-spacing: 1px;">{away_team}</span>
+                    <span style="color: {text_sub_c}; font-size: 0.95rem; margin-left: 6px; font-weight: 600;">(客)</span>
+                </div>
+                <div style="width: 16%; text-align: center; color: {text_sub_c}; font-size: 1.15rem; font-weight: 900; letter-spacing: 2px;">
+                    VS
+                </div>
+                <div style="width: 42%; text-align: left; padding-left: 14px;">
+                    <span style="font-size: 1.65rem; font-weight: 900; color: {team_h_official}; letter-spacing: 1px;">{home_team}</span>
+                    <span style="color: {text_sub_c}; font-size: 0.95rem; margin-left: 6px; font-weight: 600;">(主)</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
             bars_html = "".join([
                 render_bi_bar("百回合進攻效率 (ORtg)", f"{ortg_a:.1f}", f"{ortg_h:.1f}", higher_is_better=True),
@@ -1084,7 +1222,8 @@ elif nav_selection == MENU_GAME:
                 render_bi_bar("罰球命中 (FTM/FTA)", f"{int(stats_away.get('罰球命中', 0))}/{int(fta_a)}", f"{int(stats_home.get('罰球命中', 0))}/{int(fta_h)}", higher_is_better=True),
             ])
 
-            st.markdown(f'<div style="background: rgba(255, 255, 255, 0.02); padding: 18px 22px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 26px;">{bars_html}</div>', unsafe_allow_html=True)
+            table_wrapper_bg = "rgba(0, 0, 0, 0.02)" if is_light else "rgba(255, 255, 255, 0.02)"
+            st.markdown(f'<div style="background: {table_wrapper_bg}; padding: 18px 22px; border-radius: 12px; border: 1px solid {card_border}; margin-bottom: 26px;">{bars_html}</div>', unsafe_allow_html=True)
 
             # 分離五人陣容與核心搭檔
             lineup_5man_away, pairs_away = split_lineup_and_pairs(lineup_away)
@@ -1125,20 +1264,25 @@ elif nav_selection == MENU_GAME:
                     else:
                         st.info(f"💡 {home_team} 本場暫無雙人搭檔統計。")
 
-            # 模組 3：兩隊球員單場攻守數據 (一左一右並排展示，加大字號高度)
+            # 模組 3：兩隊球員單場攻守數據 (凍結「球員名」與「背號」欄位，滑動不跑版)
             st.markdown("#### 📋 兩隊球員單場進階攻守數據 (Single-Game Box Score)")
+            pinned_box_config = {
+                "背號": st.column_config.TextColumn("背號", pinned=True),
+                "球員名": st.column_config.TextColumn("球員名", pinned=True)
+            }
+
             col_box_a, col_box_h = st.columns(2)
             with col_box_a:
-                st.markdown(f'<div style="font-size: 1.15rem; font-weight: 700; color: #00E676; margin-bottom: 8px;">🏀 客隊：{away_team} 球員單場攻守</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size: 1.15rem; font-weight: 700; color: {team_a_official}; margin-bottom: 8px;">🏀 客隊：{away_team} 球員單場攻守</div>', unsafe_allow_html=True)
                 if not box_away.empty:
-                    st.dataframe(box_away, use_container_width=True, hide_index=True, height=540)
+                    st.dataframe(box_away, use_container_width=True, hide_index=True, height=540, column_config=pinned_box_config)
                 else:
                     st.info(f"💡 {away_team} 本場球員攻守數據載入失敗。")
 
             with col_box_h:
-                st.markdown(f'<div style="font-size: 1.15rem; font-weight: 700; color: #00E676; margin-bottom: 8px;">🏀 主隊：{home_team} 球員單場攻守</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size: 1.15rem; font-weight: 700; color: {team_h_official}; margin-bottom: 8px;">🏀 主隊：{home_team} 球員單場攻守</div>', unsafe_allow_html=True)
                 if not box_home.empty:
-                    st.dataframe(box_home, use_container_width=True, hide_index=True, height=540)
+                    st.dataframe(box_home, use_container_width=True, hide_index=True, height=540, column_config=pinned_box_config)
                 else:
                     st.info(f"💡 {home_team} 本場球員攻守數據載入失敗。")
 
@@ -1174,21 +1318,27 @@ elif nav_selection == MENU_PBP:
             df_duo = blocks['duo'].copy()
             headers = list(df_duo.columns)
             
-            # 自適應原生表格：前段數據緊湊貼合 (width: 1%)，後段建議自動展開鋪滿
+            table_border_c = "rgba(0,0,0,0.1)" if is_light else "rgba(255,255,255,0.08)"
+            table_head_bg = "rgba(0,0,0,0.03)" if is_light else "rgba(255,255,255,0.04)"
+            table_body_border = "rgba(0,0,0,0.05)" if is_light else "rgba(255,255,255,0.05)"
+            table_text_dim = "#777" if is_light else "#9E9E9E"
+            table_text_main = "#222" if is_light else "#E0E0E0"
+            table_text_desc = "#111" if is_light else "#FFFFFF"
+
             html = [
-                '<div style="overflow-x: auto; width: 100%; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 20px;">',
-                '<table style="width: 100%; border-collapse: collapse; font-size: 0.95rem; background-color: rgba(255,255,255,0.02); text-align: left;">',
-                '<thead><tr style="border-bottom: 1px solid rgba(255,255,255,0.12); background-color: rgba(255,255,255,0.04);">'
+                f'<div style="overflow-x: auto; width: 100%; border: 1px solid {table_border_c}; border-radius: 8px; margin-bottom: 20px;">',
+                f'<table style="width: 100%; border-collapse: collapse; font-size: 0.95rem; background-color: {table_wrapper_bg}; text-align: left;">',
+                f'<thead><tr style="border-bottom: 1px solid {table_border_c}; background-color: {table_head_bg};">'
             ]
             for i, h in enumerate(headers):
                 if i < len(headers) - 1:
-                    html.append(f'<th style="padding: 10px 14px; white-space: nowrap; width: 1%; color: #9E9E9E; font-weight: 600;">{h}</th>')
+                    html.append(f'<th style="padding: 10px 14px; white-space: nowrap; width: 1%; color: {table_text_dim}; font-weight: 600;">{h}</th>')
                 else:
-                    html.append(f'<th style="padding: 10px 14px; color: #9E9E9E; font-weight: 600;">{h}</th>')
+                    html.append(f'<th style="padding: 10px 14px; color: {table_text_dim}; font-weight: 600;">{h}</th>')
             html.append('</tr></thead><tbody>')
             
             for _, row in df_duo.iterrows():
-                html.append('<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">')
+                html.append(f'<tr style="border-bottom: 1px solid {table_body_border};">')
                 for i, h in enumerate(headers):
                     val = str(row[h]).strip() if pd.notna(row[h]) else ""
                     if i < len(headers) - 1:
@@ -1198,9 +1348,9 @@ elif nav_selection == MENU_PBP:
                                 val_display = f'<span style="color: #00E676; font-weight: 600;">{val}</span>'
                             elif val.startswith("-"):
                                 val_display = f'<span style="color: #FF5252; font-weight: 600;">{val}</span>'
-                        html.append(f'<td style="padding: 10px 14px; white-space: nowrap; width: 1%; color: #E0E0E0;">{val_display}</td>')
+                        html.append(f'<td style="padding: 10px 14px; white-space: nowrap; width: 1%; color: {table_text_main};">{val_display}</td>')
                     else:
-                        html.append(f'<td style="padding: 10px 14px; color: #FFFFFF; line-height: 1.5;">{val}</td>')
+                        html.append(f'<td style="padding: 10px 14px; color: {table_text_desc}; line-height: 1.5;">{val}</td>')
                 html.append('</tr>')
             html.append('</tbody></table></div>')
             st.markdown("".join(html), unsafe_allow_html=True)
@@ -1304,15 +1454,17 @@ elif nav_selection == MENU_CARD:
                     line_color='#00E676',
                     fillcolor='rgba(0, 230, 118, 0.28)'
                 ))
+                radar_grid_c = 'rgba(0, 0, 0, 0.12)' if is_light else 'rgba(255, 255, 255, 0.15)'
+                radar_text_c = '#222222' if is_light else '#FFFFFF'
                 fig_single.update_layout(
                     polar=dict(
-                        radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor='rgba(255, 255, 255, 0.15)'),
-                        angularaxis=dict(gridcolor='rgba(255, 255, 255, 0.15)', tickfont=dict(size=13, color='#FFFFFF')),
+                        radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor=radar_grid_c),
+                        angularaxis=dict(gridcolor=radar_grid_c, tickfont=dict(size=13, color=radar_text_c)),
                         bgcolor='rgba(0,0,0,0)'
                     ),
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
-                    template='plotly_dark',
+                    template=plotly_template,
                     height=460,
                     margin=dict(l=30, r=30, t=20, b=20)
                 )
@@ -1338,7 +1490,8 @@ elif nav_selection == MENU_CARD:
                     make_stat_badge_row("買犯罰球比 (FTr)", ftr_display),
                     make_stat_badge_row("助攻失誤比 (AST/TO)", ast_to_display)
                 ])
-                st.markdown(f'<div style="background-color: rgba(255,255,255,0.03); padding: 16px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px;">{rows_html}</div>', unsafe_allow_html=True)
+                card_box_bg = "rgba(0,0,0,0.02)" if is_light else "rgba(255,255,255,0.03)"
+                st.markdown(f'<div style="background-color: {card_box_bg}; padding: 16px 20px; border-radius: 10px; border: 1px solid {card_border}; margin-bottom: 12px;">{rows_html}</div>', unsafe_allow_html=True)
 
                 note_val = p1_row.get('備註/短評', p1_row.get('備註 / 例行賽表現重點', p1_row.get('備註 / 熱身賽表現重點', '暫無備註')))
                 st.info(f"💡 **教練與球探備註**：\n\n{note_val}")
@@ -1353,14 +1506,14 @@ elif nav_selection == MENU_CARD:
                 st.markdown(f"""
                 <div style="background-color: rgba(0, 230, 118, 0.1); border-left: 5px solid #00E676; padding: 12px; border-radius: 6px;">
                     <h3 style="margin: 0; color: #00E676;">🟢 {p1_row['球員名']}</h3>
-                    <p style="margin: 4px 0 0 0; color: #BBB;">{p1_row.get('球隊', '')} | #{p1_row.get('背號', '')} | {p1_row.get('位置', '')}</p>
+                    <p style="margin: 4px 0 0 0; color: {text_sub_c};">{p1_row.get('球隊', '')} | #{p1_row.get('背號', '')} | {p1_row.get('位置', '')}</p>
                 </div>
                 """, unsafe_allow_html=True)
             with pk_c2:
                 st.markdown(f"""
                 <div style="background-color: rgba(255, 145, 0, 0.1); border-left: 5px solid #FF9100; padding: 12px; border-radius: 6px;">
                     <h3 style="margin: 0; color: #FF9100;">🟠 {p2_row['球員名']}</h3>
-                    <p style="margin: 4px 0 0 0; color: #BBB;">{p2_row.get('球隊', '')} | #{p2_row.get('背號', '')} | {p2_row.get('位置', '')}</p>
+                    <p style="margin: 4px 0 0 0; color: {text_sub_c};">{p2_row.get('球隊', '')} | #{p2_row.get('背號', '')} | {p2_row.get('位置', '')}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -1386,15 +1539,17 @@ elif nav_selection == MENU_CARD:
                     line_color='#FF9100',
                     fillcolor='rgba(255, 145, 0, 0.22)'
                 ))
+                radar_grid_c = 'rgba(0, 0, 0, 0.12)' if is_light else 'rgba(255, 255, 255, 0.15)'
+                radar_text_c = '#222222' if is_light else '#FFFFFF'
                 fig_dual.update_layout(
                     polar=dict(
-                        radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor='rgba(255, 255, 255, 0.15)'),
-                        angularaxis=dict(gridcolor='rgba(255, 255, 255, 0.15)', tickfont=dict(size=13, color='#FFFFFF')),
+                        radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor=radar_grid_c),
+                        angularaxis=dict(gridcolor=radar_grid_c, tickfont=dict(size=13, color=radar_text_c)),
                         bgcolor='rgba(0,0,0,0)'
                     ),
                     paper_bgcolor='rgba(0,0,0,0)',
                     plot_bgcolor='rgba(0,0,0,0)',
-                    template='plotly_dark',
+                    template=plotly_template,
                     height=460,
                     margin=dict(l=30, r=30, t=30, b=20),
                     legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)

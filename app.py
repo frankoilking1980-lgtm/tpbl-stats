@@ -93,6 +93,9 @@ div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
         border: none !important;
         margin-bottom: 16px !important;
     }
+    div[data-testid="stRadio"] div[role="radiogroup"] > label:last-child {
+        grid-column: span 2 !important;
+    }
     div[data-testid="stRadio"] label[data-baseweb="radio"] {
         display: flex !important;
         justify-content: center !important;
@@ -214,7 +217,7 @@ def deduplicate_columns(df):
     df.columns = new_cols
     return df
 
-# ----------------- 支援資料夾分流的智慧找檔函式 (支援 xlsx, xls, csv, json) -----------------
+# ----------------- 支援資料夾分流的智慧找檔函式 -----------------
 def find_file_in_folders(candidate_dirs, keyword):
     keyword_clean = keyword.lower().strip()
     for d in candidate_dirs:
@@ -244,7 +247,7 @@ def find_team_file_in_folders(candidate_dirs, team_name):
                     return os.path.join(d, fname)
     return None
 
-# ----------------- 單場對決雙向長條圖組件 -----------------
+# ----------------- 單場對決雙向長條圖組件 (緊湊單行字串，消除程式碼黑框) -----------------
 def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True):
     try:
         num_a = float(str(val_away).replace('%', '').replace('+', ''))
@@ -266,19 +269,7 @@ def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True
     disp_a = f"{val_away:.1f}%" if is_pct and isinstance(val_away, (int, float)) else str(val_away)
     disp_h = f"{val_home:.1f}%" if is_pct and isinstance(val_home, (int, float)) else str(val_home)
     
-    return f"""
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem;">
-        <div style="width: 16%; text-align: right; font-weight: 700; color: {color_a}; font-size: 1.05rem;">{disp_a}</div>
-        <div style="width: 26%; display: flex; justify-content: flex-end; padding-right: 8px;">
-            <div style="width: {pct_a:.1f}%; background: {color_a}; height: 8px; border-radius: 4px;"></div>
-        </div>
-        <div style="width: 32%; text-align: center; color: #BBB; font-weight: 600; white-space: nowrap; font-size: 0.9rem;">{label}</div>
-        <div style="width: 26%; display: flex; justify-content: flex-start; padding-left: 8px;">
-            <div style="width: {pct_h:.1f}%; background: {color_h}; height: 8px; border-radius: 4px;"></div>
-        </div>
-        <div style="width: 16%; text-align: left; font-weight: 700; color: {color_h}; font-size: 1.05rem;">{disp_h}</div>
-    </div>
-    """
+    return f'<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem;"><div style="width: 16%; text-align: right; font-weight: 700; color: {color_a}; font-size: 1.05rem;">{disp_a}</div><div style="width: 26%; display: flex; justify-content: flex-end; padding-right: 8px;"><div style="width: {pct_a:.1f}%; background: {color_a}; height: 8px; border-radius: 4px;"></div></div><div style="width: 32%; text-align: center; color: #BBB; font-weight: 600; white-space: nowrap; font-size: 0.9rem;">{label}</div><div style="width: 26%; display: flex; justify-content: flex-start; padding-left: 8px;"><div style="width: {pct_h:.1f}%; background: {color_h}; height: 8px; border-radius: 4px;"></div></div><div style="width: 16%; text-align: left; font-weight: 700; color: {color_h}; font-size: 1.05rem;">{disp_h}</div></div>'
 
 # ----------------- 單場比賽工作表數據抽取器 -----------------
 def extract_single_game_data(filepath, sheet_name):
@@ -944,7 +935,7 @@ elif nav_selection == MENU_SCATTER:
         st.info("💡 尚未讀取到球員進階數據母表。")
 
 # =========================================================================
-# 分頁 3：單場賽事實況與進階數據覆盤 (全新核心功能)
+# 分頁 3：單場賽事實況與進階數據覆盤
 # =========================================================================
 elif nav_selection == MENU_GAME:
     st.subheader(f"📅 {stage_selection} — 單場賽事實況與進階數據覆盤 (Game Breakdown)")

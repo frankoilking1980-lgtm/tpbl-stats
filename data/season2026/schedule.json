@@ -1,0 +1,24 @@
+[
+  {
+    "game_id": "G01",
+    "date": "2026.10.17",
+    "time": "17:00",
+    "away_team": "新北國王",
+    "away_score": 113,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 108,
+    "sheet_name": "2026.10.17 G01 國王 vs 夢想家",
+    "status": "FINAL (OT)"
+  },
+  {
+    "game_id": "G02",
+    "date": "2026.10.18",
+    "time": "17:00",
+    "away_team": "高雄全家海神",
+    "away_score": 114,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 113,
+    "sheet_name": "2026.10.18 G02 海神 vs 夢想家",
+    "status": "FINAL"
+  }
+]

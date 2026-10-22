@@ -154,15 +154,24 @@ else:
     """
 st.markdown(theme_css, unsafe_allow_html=True)
 
+# ----------------- 全域 UI 色彩與容器變數（避免跨分頁 NameError） -----------------
+card_bg = "rgba(0, 0, 0, 0.03)" if is_light else "rgba(255, 255, 255, 0.03)"
+card_border = "rgba(0, 0, 0, 0.1)" if is_light else "rgba(255, 255, 255, 0.1)"
+card_box_bg = "rgba(0, 0, 0, 0.02)" if is_light else "rgba(255, 255, 255, 0.03)"
+table_wrapper_bg = "rgba(0, 0, 0, 0.02)" if is_light else "rgba(255, 255, 255, 0.02)"
+text_title_c = "#111111" if is_light else "#EEEEEE"
+text_sub_c = "#777777" if is_light else "#888888"
+
 # ----------------- 工具函式 -----------------
 def clean_time_display(val):
     if pd.isna(val):
         return ""
     if isinstance(val, (pd.Timedelta, datetime.timedelta)):
-        tot_sec = val.total_seconds()
-        orig_mins = int(tot_sec // 3600)
-        orig_secs = int((tot_sec % 3600) // 60)
-        return f"{orig_mins:02d}:{orig_secs:02d}"
+        tot_sec = int(val.total_seconds())
+        if tot_sec < 3600:
+            return f"{tot_sec // 60:02d}:{tot_sec % 60:02d}"
+        else:
+            return f"{tot_sec // 3600:02d}:{(tot_sec % 3600) // 60:02d}"
     val_str = str(val).strip()
     m_day = re.match(r'(\d+)\s*days?,?\s*(\d+):(\d+)(?::(\d+))?', val_str)
     if m_day:
@@ -175,9 +184,12 @@ def clean_time_display(val):
     m_pt = re.match(r'PT(\d+)H(\d+)M', val_str)
     if m_pt:
         return f"{int(m_pt.group(1)):02d}:{int(m_pt.group(2)):02d}"
-    m_hms = re.match(r'^(\d+):(\d+):00$', val_str)
+    m_hms = re.match(r'^00:(\d+):(\d+)$', val_str)
     if m_hms:
         return f"{int(m_hms.group(1)):02d}:{int(m_hms.group(2)):02d}"
+    m_hms2 = re.match(r'^(\d+):(\d+):00$', val_str)
+    if m_hms2:
+        return f"{int(m_hms2.group(1)):02d}:{int(m_hms2.group(2)):02d}"
     return val_str
 
 def format_pct(val):
@@ -332,7 +344,10 @@ def split_lineup_and_pairs(df_lineup):
         df_5man = df_lineup.loc[:split_idx - 1].copy()
         df_pairs = df_lineup.loc[split_idx + 1:].copy()
     else:
-        mask_pairs = df_lineup[col0].astype(str).str.contains(r'\+')
+        def is_pair(val):
+            cnt = str(val).count('+')
+            return cnt == 1 or cnt == 2
+        mask_pairs = df_lineup[col0].apply(is_pair)
         df_5man = df_lineup[~mask_pairs].copy()
         df_pairs = df_lineup[mask_pairs].copy()
 
@@ -349,11 +364,9 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
         all_sheets = xls.sheet_names
         matched_sheet = None
 
-        # 1. 完全相同
         if sheet_name in all_sheets:
             matched_sheet = sheet_name
 
-        # 2. 去除所有空格與標點比對
         if not matched_sheet:
             clean_target = re.sub(r'[\s\.\-_/]', '', sheet_name).lower()
             for s in all_sheets:
@@ -361,7 +374,6 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
                     matched_sheet = s
                     break
 
-        # 3. 同時比對 game_id (如 G02) 與 日期 (如 10.18) 雙重強鎖定
         if not matched_sheet:
             gid = game_id.lower().strip() if game_id else ""
             date_clean = re.sub(r'^(2025|2026|2027)[\.\-_/]', '', game_date).strip() if game_date else ""
@@ -373,7 +385,6 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
                     matched_sheet = s
                     break
 
-        # 4. 單獨匹配 game_id（確保是獨立單詞）
         if not matched_sheet and game_id:
             gid = game_id.lower().strip()
             for s in all_sheets:
@@ -382,7 +393,6 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
                     matched_sheet = s
                     break
 
-        # 5. 單獨匹配日期
         if not matched_sheet and game_date:
             date_clean = re.sub(r'^(2025|2026|2027)[\.\-_/]', '', game_date).strip()
             for s in all_sheets:
@@ -397,8 +407,8 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
         
         header_r = None
         for r in range(min(8, len(df))):
-            vals = [str(x).strip() for x in df.iloc[r, :6].dropna().tolist()]
-            if "球員名" in vals:
+            vals = [str(x).strip() for x in df.iloc[r, :8].dropna().tolist()]
+            if any(k in vals for k in ["球員名", "球員", "Player"]):
                 header_r = r
                 break
                 
@@ -427,7 +437,7 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
         box_df = pd.DataFrame(box_rows, columns=box_cols)
         box_df = clean_dataframe_times(deduplicate_columns(box_df))
 
-        # 2. 提取右側陣容與 On/Off 表
+        # 2. 提取右側陣容與 On/Off 表（從 Box 結束後一欄動態探測）
         def extract_sub(start_c):
             if start_c is None or start_c >= len(df.columns):
                 return pd.DataFrame()
@@ -452,11 +462,12 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
 
         onoff_c = None
         lineup_c = None
-        for c in range(30, len(df.columns)):
+        start_scan = max(box_col_idxs) + 1 if box_col_idxs else 16
+        for c in range(start_scan, len(df.columns)):
             val_r2 = str(df.iloc[header_r - 1, c]).strip() if header_r > 0 else ""
             val_r3 = str(df.iloc[header_r, c]).strip()
             if "On/Off" in val_r2 or "on/off" in val_r3.lower() or ("在場時間" in val_r3 and onoff_c is None):
-                onoff_c = c if val_r3 == "球員名" else (c-1 if df.iloc[header_r, c-1] == "球員名" else c)
+                onoff_c = c if val_r3 in ["球員名", "球員"] else (c-1 if df.iloc[header_r, c-1] in ["球員名", "球員"] else c)
             if "陣容" in val_r2 or "陣容" in val_r3:
                 if lineup_c is None:
                     lineup_c = c
@@ -490,6 +501,9 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
                 team_stats[stat_key] = float(pd.to_numeric(box_df[matched_c], errors='coerce').fillna(0).sum())
             else:
                 team_stats[stat_key] = 0.0
+
+        if team_stats.get('防守籃板', 0.0) == 0.0 and team_stats.get('籃板', 0.0) > 0 and team_stats.get('進攻籃板', 0.0) > 0:
+            team_stats['防守籃板'] = max(0.0, team_stats['籃板'] - team_stats['進攻籃板'])
 
         return box_df, onoff_df, lineup_df, team_stats, matched_sheet
     except Exception:
@@ -877,6 +891,12 @@ if nav_selection == MENU_SUMMARY:
                         losses = float(m_loss.group(1)) if m_loss else 0.0
                         tot = wins + losses
                         return wins / tot if tot > 0 else 0.0
+                    m_dash = re.search(r'(\d+)\s*[-－/]\s*(\d+)', val_str)
+                    if m_dash:
+                        wins = float(m_dash.group(1))
+                        losses = float(m_dash.group(2))
+                        tot = wins + losses
+                        return wins / tot if tot > 0 else 0.0
                     return 0.0
 
                 df_display['_win_sort'] = df_display['戰績'].apply(extract_win_pct)
@@ -1078,16 +1098,24 @@ elif nav_selection == MENU_GAME:
         cur_game_id = cur_game.get('game_id', '')
         cur_game_date = cur_game.get('date', '')
 
+        away_file = find_team_file_in_folders(active_dirs, away_team)
+        home_file = find_team_file_in_folders(active_dirs, home_team)
+
+        # 優先抽取數據，以利自動比分校準
+        box_away, onoff_away, lineup_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, sheet_name, cur_game_id, cur_game_date)
+        box_home, onoff_home, lineup_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, sheet_name, cur_game_id, cur_game_date)
+
+        # 智慧比分校準：若 Excel 內球員實際得分加總大於 0，自動覆蓋 schedule.json 的可能筆誤
+        if stats_away.get('得分', 0) > 0:
+            away_score = int(stats_away['得分'])
+        if stats_home.get('得分', 0) > 0:
+            home_score = int(stats_home['得分'])
+
         color_away = "#00E676" if away_score > home_score else ("#222" if is_light else "#FFF")
         color_home = "#00E676" if home_score > away_score else ("#222" if is_light else "#FFF")
         
         team_a_official = team_color_map.get(away_team, "#00E676")
         team_h_official = team_color_map.get(home_team, "#00E676")
-
-        card_bg = "rgba(0, 0, 0, 0.03)" if is_light else "rgba(255, 255, 255, 0.03)"
-        card_border = "rgba(0, 0, 0, 0.1)" if is_light else "rgba(255, 255, 255, 0.1)"
-        text_title_c = "#111" if is_light else "#EEE"
-        text_sub_c = "#777" if is_light else "#888"
 
         # 頂部賽事記分板橫幅
         st.markdown(f"""
@@ -1112,17 +1140,9 @@ elif nav_selection == MENU_GAME:
         </div>
         """, unsafe_allow_html=True)
 
-        away_file = find_team_file_in_folders(active_dirs, away_team)
-        home_file = find_team_file_in_folders(active_dirs, home_team)
-
-        # 雙重強鎖定抽取（回傳實際命中的工作表名稱以利除錯與核實）
-        box_away, onoff_away, lineup_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, sheet_name, cur_game_id, cur_game_date)
-        box_home, onoff_home, lineup_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, sheet_name, cur_game_id, cur_game_date)
-
         if box_away.empty and box_home.empty:
             st.warning(f"⚠️ 找不到該場次的工作表（請確認各隊 Excel 中是否包含名稱為 `{sheet_name}` 的工作表）。")
         else:
-            # 顯示實際讀取來源工作表名稱，透明核對
             st.caption(f"🔍 數據來源工作表核對 ｜ 客隊：`{matched_away_sheet}` ｜ 主隊：`{matched_home_sheet}`")
 
             fga_a, fta_a, oreb_a, dreb_a, tov_a, fgm_a, tpm_a, tpa_a = (
@@ -1159,7 +1179,6 @@ elif nav_selection == MENU_GAME:
 
             st.markdown("#### ⚔️ 兩隊進階四要素與攻防效率雙向對決")
             
-            # 精準對齊雙隊名稱橫幅
             st.markdown(f"""
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0 16px 0; border-bottom: 2px solid {card_border}; margin-bottom: 18px;">
                 <div style="width: 42%; text-align: right; padding-right: 14px;">
@@ -1190,14 +1209,11 @@ elif nav_selection == MENU_GAME:
                 render_bi_bar("罰球命中 (FTM/FTA)", f"{int(stats_away.get('罰球命中', 0))}/{int(fta_a)}", f"{int(stats_home.get('罰球命中', 0))}/{int(fta_h)}", higher_is_better=True),
             ])
 
-            table_wrapper_bg = "rgba(0, 0, 0, 0.02)" if is_light else "rgba(255, 255, 255, 0.02)"
             st.markdown(f'<div style="background: {table_wrapper_bg}; padding: 18px 22px; border-radius: 12px; border: 1px solid {card_border}; margin-bottom: 26px;">{bars_html}</div>', unsafe_allow_html=True)
 
-            # 分離五人陣容與核心搭檔
             lineup_5man_away, pairs_away = split_lineup_and_pairs(lineup_away)
             lineup_5man_home, pairs_home = split_lineup_and_pairs(lineup_home)
 
-            # 模組 1：單場關鍵五人陣容對抗
             st.markdown("#### 🏆 單場關鍵五人陣容對抗 (Top 5-Man Lineups)")
             col_l_a, col_l_h = st.columns(2)
             with col_l_a:
@@ -1214,7 +1230,6 @@ elif nav_selection == MENU_GAME:
                 else:
                     st.info(f"💡 {home_team} 本場暫無五人陣容細部統計。")
 
-            # 模組 2：單場核心雙人搭檔效益
             if not pairs_away.empty or not pairs_home.empty:
                 st.markdown("#### 🤝 單場核心雙人搭檔效益 (Key Pairs Chemistry)")
                 col_p_a, col_p_h = st.columns(2)
@@ -1230,9 +1245,8 @@ elif nav_selection == MENU_GAME:
                     if not pairs_home.empty:
                         st.dataframe(pairs_home, use_container_width=True, hide_index=True)
                     else:
-                        st.info(f"💡 {home_team} 本場暫重雙人搭檔統計。")
+                        st.info(f"💡 {home_team} 本場暫無雙人搭檔統計。")
 
-            # 模組 3：兩隊球員單場攻守數據 (固定「球員名」與「背號」欄位)
             st.markdown("#### 📋 兩隊球員單場進階攻守數據 (Single-Game Box Score)")
             pinned_box_config = {
                 "背號": st.column_config.TextColumn("背號", pinned=True),
@@ -1349,7 +1363,11 @@ elif nav_selection == MENU_CARD:
             p1_team = st.selectbox("🏀 主要球員所屬球隊", all_teams, index=0, key="sel_p1_team")
         with p1_col2:
             p1_player_list = df_players[df_players['球隊'] == p1_team]['球員名'].dropna().tolist() if '球隊' in df_players.columns else df_players['球員名'].dropna().tolist()
-            p1_name = st.selectbox("🎯 選擇主要球員", p1_player_list, index=0, key="sel_p1_player")
+            if not p1_player_list:
+                st.warning("⚠️ 該球隊暫無可用球員名單")
+                p1_name = None
+            else:
+                p1_name = st.selectbox("🎯 選擇主要球員", p1_player_list, index=0, key="sel_p1_player")
 
         st.markdown("##### ⚔️ 步驟 2：加入比較球員（可選）")
         p2_col1, p2_col2 = st.columns(2)
@@ -1366,200 +1384,205 @@ elif nav_selection == MENU_CARD:
                 st.info("💡 尚未選擇第二位球員，目前維持「單人球探卡」模式。")
                 p2_name = None
 
-        p1_row = df_players[(df_players['球隊'] == p1_team) & (df_players['球員名'] == p1_name)].iloc[0] if '球隊' in df_players.columns else df_players[df_players['球員名'] == p1_name].iloc[0]
+        p1_match = df_players[(df_players['球隊'] == p1_team) & (df_players['球員名'] == p1_name)] if '球隊' in df_players.columns else df_players[df_players['球員名'] == p1_name]
+        p1_row = p1_match.iloc[0] if not p1_match.empty else None
         p2_row = None
         if p2_name:
-            p2_row = df_players[(df_players['球隊'] == p2_team) & (df_players['球員名'] == p2_name)].iloc[0] if '球隊' in df_players.columns else df_players[df_players['球員名'] == p2_name].iloc[0]
+            p2_match = df_players[(df_players['球隊'] == p2_team) & (df_players['球員名'] == p2_name)] if '球隊' in df_players.columns else df_players[df_players['球員名'] == p2_name]
+            p2_row = p2_match.iloc[0] if not p2_match.empty else None
 
-        categories = ['得分產量', '真實效率', '外線威脅', '組織發動', '籃板保護', '防守破壞']
-        cats_closed = categories + [categories[0]]
-        p1_scores = calculate_radar_scores(p1_row)
-        p1_closed = p1_scores + [p1_scores[0]]
-
-        if p2_row is None:
-            st.divider()
-            card_col1, card_col2, card_col3, card_col4 = st.columns(4)
-            
-            games_cnt = float(pd.to_numeric(str(p1_row.get('出賽', p1_row.get('場次', 1))), errors='coerce') or 1.0)
-            games_cnt = 1.0 if games_cnt <= 0 else games_cnt
-            
-            raw_pts = 0.0
-            for pc in ['場均得分', 'PPG', '總得分', '得分', 'PTS']:
-                if pc in p1_row and pd.notna(p1_row[pc]):
-                    try:
-                        raw_pts = float(str(p1_row[pc]).replace('%', ''))
-                        break
-                    except:
-                        pass
-            
-            if '場均得分' in p1_row or 'PPG' in p1_row:
-                ppg_val = raw_pts
-                tot_pts = raw_pts * games_cnt
-            else:
-                tot_pts = raw_pts
-                ppg_val = tot_pts / games_cnt
-
-            raw_gmsc = float(pd.to_numeric(str(p1_row.get('GmSc', p1_row.get('EFF', 0))), errors='coerce') or 0.0)
-            gmsc_pg = raw_gmsc / games_cnt if raw_gmsc > 45 else raw_gmsc
-            
-            ts_val = format_pct(p1_row.get('TS%', '0%'))
-            usg_val = format_pct(p1_row.get('USG%', '0%'))
-
-            card_col1.metric("場均得分 (PPG)", f"{ppg_val:.1f} 分", delta=f"整季累計 {int(tot_pts)} 分" if tot_pts > 40 else None)
-            card_col2.metric("真實命中率 (TS%)", ts_val)
-            card_col3.metric("球權使用率 (USG%)", usg_val)
-            card_col4.metric("場均綜合評分 (GmSc)", f"{gmsc_pg:.1f}", delta=f"整季累積 {raw_gmsc:.1f}" if raw_gmsc > 45 else None)
-
-            r_col1, r_col2 = st.columns([1.1, 1])
-            with r_col1:
-                st.markdown(f"#### 📊 {p1_row['球員名']} — 六維戰力雷達圖")
-                fig_single = go.Figure()
-                fig_single.add_trace(go.Scatterpolar(
-                    r=p1_closed,
-                    theta=cats_closed,
-                    fill='toself',
-                    name=str(p1_row['球員名']),
-                    line_color='#00E676',
-                    fillcolor='rgba(0, 230, 118, 0.28)'
-                ))
-                radar_grid_c = 'rgba(0, 0, 0, 0.12)' if is_light else 'rgba(255, 255, 255, 0.15)'
-                radar_text_c = '#222222' if is_light else '#FFFFFF'
-                fig_single.update_layout(
-                    polar=dict(
-                        radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor=radar_grid_c),
-                        angularaxis=dict(gridcolor=radar_grid_c, tickfont=dict(size=13, color=radar_text_c)),
-                        bgcolor='rgba(0,0,0,0)'
-                    ),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    template=plotly_template,
-                    height=460,
-                    margin=dict(l=30, r=30, t=20, b=20)
-                )
-                st.plotly_chart(fig_single, use_container_width=True)
-
-            with r_col2:
-                st.markdown(f"#### 🔍 球員基本檔案與球探特徵")
-                team_display = str(p1_row.get('球隊', '所屬隊伍'))
-                pos_display = str(p1_row.get('位置', '位置'))
-                id_display = str(p1_row.get('本土/洋將', p1_row.get('身分', p1_row.get('身份', '身分'))))
-                num_display = str(p1_row.get('背號', '#'))
-                efg_display = format_pct(p1_row.get('eFG%', '0%'))
-                tpar_display = format_pct(p1_row.get('3PAr', '0%'))
-                ftr_display = format_pct(p1_row.get('FTr', '0%'))
-                ast_to_display = get_ast_to_ratio(p1_row)
-
-                rows_html = "".join([
-                    make_stat_badge_row("所屬隊伍", team_display),
-                    make_stat_badge_row("球衣背號 / 場上位置", f"#{num_display} / {pos_display}"),
-                    make_stat_badge_row("球員身分類別", id_display),
-                    make_stat_badge_row("有效命中率 (eFG%)", efg_display),
-                    make_stat_badge_row("三分出手佔比 (3PAr)", tpar_display),
-                    make_stat_badge_row("買犯罰球比 (FTr)", ftr_display),
-                    make_stat_badge_row("助攻失誤比 (AST/TO)", ast_to_display)
-                ])
-                card_box_bg = "rgba(0,0,0,0.02)" if is_light else "rgba(255,255,255,0.03)"
-                st.markdown(f'<div style="background-color: {card_box_bg}; padding: 16px 20px; border-radius: 10px; border: 1px solid {card_border}; margin-bottom: 12px;">{rows_html}</div>', unsafe_allow_html=True)
-
-                note_val = p1_row.get('備註/短評', p1_row.get('備註 / 例行賽表現重點', p1_row.get('備註 / 熱身賽表現重點', '暫無備註')))
-                st.info(f"💡 **教練與球探備註**：\n\n{note_val}")
-
+        if p1_row is None:
+            st.warning('⚠️ 查無此球員資料，請重新選擇。')
         else:
-            p2_scores = calculate_radar_scores(p2_row)
-            p2_closed = p2_scores + [p2_scores[0]]
+            categories = ['得分產量', '真實效率', '外線威脅', '組織發動', '籃板保護', '防守破壞']
+            cats_closed = categories + [categories[0]]
+            p1_scores = calculate_radar_scores(p1_row)
+            p1_closed = p1_scores + [p1_scores[0]]
 
-            st.divider()
-            pk_c1, pk_c2 = st.columns(2)
-            with pk_c1:
-                st.markdown(f"""
-                <div style="background-color: rgba(0, 230, 118, 0.1); border-left: 5px solid #00E676; padding: 12px; border-radius: 6px;">
-                    <h3 style="margin: 0; color: #00E676;">🟢 {p1_row['球員名']}</h3>
-                    <p style="margin: 4px 0 0 0; color: {text_sub_c};">{p1_row.get('球隊', '')} | #{p1_row.get('背號', '')} | {p1_row.get('位置', '')}</p>
-                </div>
-                """, unsafe_allow_html=True)
-            with pk_c2:
-                st.markdown(f"""
-                <div style="background-color: rgba(255, 145, 0, 0.1); border-left: 5px solid #FF9100; padding: 12px; border-radius: 6px;">
-                    <h3 style="margin: 0; color: #FF9100;">🟠 {p2_row['球員名']}</h3>
-                    <p style="margin: 4px 0 0 0; color: {text_sub_c};">{p2_row.get('球隊', '')} | #{p2_row.get('背號', '')} | {p2_row.get('位置', '')}</p>
-                </div>
-                """, unsafe_allow_html=True)
+            if p2_row is None:
+                st.divider()
+                card_col1, card_col2, card_col3, card_col4 = st.columns(4)
 
-            st.write("")
-            dual_col1, dual_col2 = st.columns([1.1, 1])
+                games_cnt = float(pd.to_numeric(str(p1_row.get('出賽', p1_row.get('場次', 1))), errors='coerce') or 1.0)
+                games_cnt = 1.0 if games_cnt <= 0 else games_cnt
 
-            with dual_col1:
-                st.markdown("#### ⚔️ 戰力六維度重疊對抗圖")
-                fig_dual = go.Figure()
-                fig_dual.add_trace(go.Scatterpolar(
-                    r=p1_closed,
-                    theta=cats_closed,
-                    fill='toself',
-                    name=str(p1_row['球員名']),
-                    line_color='#00E676',
-                    fillcolor='rgba(0, 230, 118, 0.22)'
-                ))
-                fig_dual.add_trace(go.Scatterpolar(
-                    r=p2_closed,
-                    theta=cats_closed,
-                    fill='toself',
-                    name=str(p2_row['球員名']),
-                    line_color='#FF9100',
-                    fillcolor='rgba(255, 145, 0, 0.22)'
-                ))
-                radar_grid_c = 'rgba(0, 0, 0, 0.12)' if is_light else 'rgba(255, 255, 255, 0.15)'
-                radar_text_c = '#222222' if is_light else '#FFFFFF'
-                fig_dual.update_layout(
-                    polar=dict(
-                        radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor=radar_grid_c),
-                        angularaxis=dict(gridcolor=radar_grid_c, tickfont=dict(size=13, color=radar_text_c)),
-                        bgcolor='rgba(0,0,0,0)'
-                    ),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    template=plotly_template,
-                    height=460,
-                    margin=dict(l=30, r=30, t=30, b=20),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)
-                )
-                st.plotly_chart(fig_dual, use_container_width=True)
+                raw_pts = 0.0
+                for pc in ['場均得分', 'PPG', '總得分', '得分', 'PTS']:
+                    if pc in p1_row and pd.notna(p1_row[pc]):
+                        try:
+                            raw_pts = float(str(p1_row[pc]).replace('%', ''))
+                            break
+                        except:
+                            pass
 
-            with dual_col2:
-                st.markdown("#### 📋 攻守數據正面對決表 (Tale of the Tape)")
-                
-                def get_ppg(r):
-                    g = float(pd.to_numeric(str(r.get('出賽', r.get('場次', 1))), errors='coerce') or 1.0)
-                    g = 1.0 if g <= 0 else g
-                    for pc in ['場均得分', 'PPG']:
-                        if pc in r and pd.notna(r[pc]):
-                            return float(str(r[pc]).replace('%', ''))
-                    for pc in ['總得分', '得分', 'PTS']:
-                        if pc in r and pd.notna(r[pc]):
-                            return float(str(r[pc]).replace('%', '')) / g
-                    return 0.0
+                if '場均得分' in p1_row or 'PPG' in p1_row:
+                    ppg_val = raw_pts
+                    tot_pts = raw_pts * games_cnt
+                else:
+                    tot_pts = raw_pts
+                    ppg_val = tot_pts / games_cnt
 
-                p1_ppg = get_ppg(p1_row)
-                p2_ppg = get_ppg(p2_row)
+                raw_gmsc = float(pd.to_numeric(str(p1_row.get('GmSc', p1_row.get('EFF', 0))), errors='coerce') or 0.0)
+                gmsc_pg = raw_gmsc / games_cnt if raw_gmsc > 45 else raw_gmsc
 
-                compare_metrics = [
-                    ('場均得分 (PPG)', f"{p1_ppg:.1f}", f"{p2_ppg:.1f}"),
-                    ('出賽場次', p1_row.get('出賽', p1_row.get('場次', 0)), p2_row.get('出賽', p2_row.get('場次', 0))),
-                    ('真實命中率 (TS%)', format_pct(p1_row.get('TS%', '0%')), format_pct(p2_row.get('TS%', '0%'))),
-                    ('有效命中率 (eFG%)', format_pct(p1_row.get('eFG%', '0%')), format_pct(p2_row.get('eFG%', '0%'))),
-                    ('球權使用率 (USG%)', format_pct(p1_row.get('USG%', '0%')), format_pct(p2_row.get('USG%', '0%'))),
-                    ('三分出手比 (3PAr)', format_pct(p1_row.get('3PAr', '0%')), format_pct(p2_row.get('3PAr', '0%'))),
-                    ('買犯罰球比 (FTr)', format_pct(p1_row.get('FTr', '0%')), format_pct(p2_row.get('FTr', '0%'))),
-                    ('助攻失誤比 (AST/TO)', get_ast_to_ratio(p1_row), get_ast_to_ratio(p2_row)),
-                    ('籃板', p1_row.get('籃板', 0), p2_row.get('籃板', 0)),
-                    ('助攻', p1_row.get('助攻', 0), p2_row.get('助攻', 0)),
-                    ('抄截', p1_row.get('抄截', 0), p2_row.get('抄截', 0)),
-                    ('阻攻', p1_row.get('阻攻', 0), p2_row.get('阻攻', 0)),
-                    ('綜合評分 (GmSc)', p1_row.get('GmSc', p1_row.get('EFF', 0)), p2_row.get('GmSc', p2_row.get('EFF', 0)))
-                ]
-                
-                cmp_df = pd.DataFrame(compare_metrics, columns=['指標項目', f"🟢 {p1_row['球員名']}", f"🟠 {p2_row['球員名']}"])
-                st.dataframe(cmp_df, use_container_width=True, hide_index=True)
-                st.caption("💡 提示：可切換不同球員組合，觀察不同體系後衛或禁區長人之間的風格差異。")
+                ts_val = format_pct(p1_row.get('TS%', '0%'))
+                usg_val = format_pct(p1_row.get('USG%', '0%'))
+
+                card_col1.metric("場均得分 (PPG)", f"{ppg_val:.1f} 分", delta=f"整季累計 {int(tot_pts)} 分" if tot_pts > 40 else None)
+                card_col2.metric("真實命中率 (TS%)", ts_val)
+                card_col3.metric("球權使用率 (USG%)", usg_val)
+                card_col4.metric("場均綜合評分 (GmSc)", f"{gmsc_pg:.1f}", delta=f"整季累積 {raw_gmsc:.1f}" if raw_gmsc > 45 else None)
+
+                r_col1, r_col2 = st.columns([1.1, 1])
+                with r_col1:
+                    st.markdown(f"#### 📊 {p1_row['球員名']} — 六維戰力雷達圖")
+                    fig_single = go.Figure()
+                    fig_single.add_trace(go.Scatterpolar(
+                        r=p1_closed,
+                        theta=cats_closed,
+                        fill='toself',
+                        name=str(p1_row['球員名']),
+                        line_color='#00E676',
+                        fillcolor='rgba(0, 230, 118, 0.28)'
+                    ))
+                    radar_grid_c = 'rgba(0, 0, 0, 0.12)' if is_light else 'rgba(255, 255, 255, 0.15)'
+                    radar_text_c = '#222222' if is_light else '#FFFFFF'
+                    fig_single.update_layout(
+                        polar=dict(
+                            radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor=radar_grid_c),
+                            angularaxis=dict(gridcolor=radar_grid_c, tickfont=dict(size=13, color=radar_text_c)),
+                            bgcolor='rgba(0,0,0,0)'
+                        ),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        template=plotly_template,
+                        height=460,
+                        margin=dict(l=30, r=30, t=20, b=20)
+                    )
+                    st.plotly_chart(fig_single, use_container_width=True)
+
+                with r_col2:
+                    st.markdown(f"#### 🔍 球員基本檔案與球探特徵")
+                    team_display = str(p1_row.get('球隊', '所屬隊伍'))
+                    pos_display = str(p1_row.get('位置', '位置'))
+                    id_display = str(p1_row.get('本土/洋將', p1_row.get('身分', p1_row.get('身份', '身分'))))
+                    num_display = str(p1_row.get('背號', '#'))
+                    efg_display = format_pct(p1_row.get('eFG%', '0%'))
+                    tpar_display = format_pct(p1_row.get('3PAr', '0%'))
+                    ftr_display = format_pct(p1_row.get('FTr', '0%'))
+                    ast_to_display = get_ast_to_ratio(p1_row)
+
+                    rows_html = "".join([
+                        make_stat_badge_row("所屬隊伍", team_display),
+                        make_stat_badge_row("球衣背號 / 場上位置", f"#{num_display} / {pos_display}"),
+                        make_stat_badge_row("球員身分類別", id_display),
+                        make_stat_badge_row("有效命中率 (eFG%)", efg_display),
+                        make_stat_badge_row("三分出手佔比 (3PAr)", tpar_display),
+                        make_stat_badge_row("買犯罰球比 (FTr)", ftr_display),
+                        make_stat_badge_row("助攻失誤比 (AST/TO)", ast_to_display)
+                    ])
+                    card_box_bg = "rgba(0,0,0,0.02)" if is_light else "rgba(255,255,255,0.03)"
+                    st.markdown(f'<div style="background-color: {card_box_bg}; padding: 16px 20px; border-radius: 10px; border: 1px solid {card_border}; margin-bottom: 12px;">{rows_html}</div>', unsafe_allow_html=True)
+
+                    note_val = p1_row.get('備註/短評', p1_row.get('備註 / 例行賽表現重點', p1_row.get('備註 / 熱身賽表現重點', '暫無備註')))
+                    st.info(f"💡 **教練與球探備註**：\n\n{note_val}")
+
+            else:
+                p2_scores = calculate_radar_scores(p2_row)
+                p2_closed = p2_scores + [p2_scores[0]]
+
+                st.divider()
+                pk_c1, pk_c2 = st.columns(2)
+                with pk_c1:
+                    st.markdown(f"""
+                    <div style="background-color: rgba(0, 230, 118, 0.1); border-left: 5px solid #00E676; padding: 12px; border-radius: 6px;">
+                        <h3 style="margin: 0; color: #00E676;">🟢 {p1_row['球員名']}</h3>
+                        <p style="margin: 4px 0 0 0; color: {text_sub_c};">{p1_row.get('球隊', '')} | #{p1_row.get('背號', '')} | {p1_row.get('位置', '')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with pk_c2:
+                    st.markdown(f"""
+                    <div style="background-color: rgba(255, 145, 0, 0.1); border-left: 5px solid #FF9100; padding: 12px; border-radius: 6px;">
+                        <h3 style="margin: 0; color: #FF9100;">🟠 {p2_row['球員名']}</h3>
+                        <p style="margin: 4px 0 0 0; color: {text_sub_c};">{p2_row.get('球隊', '')} | #{p2_row.get('背號', '')} | {p2_row.get('位置', '')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.write("")
+                dual_col1, dual_col2 = st.columns([1.1, 1])
+
+                with dual_col1:
+                    st.markdown("#### ⚔️ 戰力六維度重疊對抗圖")
+                    fig_dual = go.Figure()
+                    fig_dual.add_trace(go.Scatterpolar(
+                        r=p1_closed,
+                        theta=cats_closed,
+                        fill='toself',
+                        name=str(p1_row['球員名']),
+                        line_color='#00E676',
+                        fillcolor='rgba(0, 230, 118, 0.22)'
+                    ))
+                    fig_dual.add_trace(go.Scatterpolar(
+                        r=p2_closed,
+                        theta=cats_closed,
+                        fill='toself',
+                        name=str(p2_row['球員名']),
+                        line_color='#FF9100',
+                        fillcolor='rgba(255, 145, 0, 0.22)'
+                    ))
+                    radar_grid_c = 'rgba(0, 0, 0, 0.12)' if is_light else 'rgba(255, 255, 255, 0.15)'
+                    radar_text_c = '#222222' if is_light else '#FFFFFF'
+                    fig_dual.update_layout(
+                        polar=dict(
+                            radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor=radar_grid_c),
+                            angularaxis=dict(gridcolor=radar_grid_c, tickfont=dict(size=13, color=radar_text_c)),
+                            bgcolor='rgba(0,0,0,0)'
+                        ),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        template=plotly_template,
+                        height=460,
+                        margin=dict(l=30, r=30, t=30, b=20),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="center", x=0.5)
+                    )
+                    st.plotly_chart(fig_dual, use_container_width=True)
+
+                with dual_col2:
+                    st.markdown("#### 📋 攻守數據正面對決表 (Tale of the Tape)")
+
+                    def get_ppg(r):
+                        g = float(pd.to_numeric(str(r.get('出賽', r.get('場次', 1))), errors='coerce') or 1.0)
+                        g = 1.0 if g <= 0 else g
+                        for pc in ['場均得分', 'PPG']:
+                            if pc in r and pd.notna(r[pc]):
+                                return float(str(r[pc]).replace('%', ''))
+                        for pc in ['總得分', '得分', 'PTS']:
+                            if pc in r and pd.notna(r[pc]):
+                                return float(str(r[pc]).replace('%', '')) / g
+                        return 0.0
+
+                    p1_ppg = get_ppg(p1_row)
+                    p2_ppg = get_ppg(p2_row)
+
+                    compare_metrics = [
+                        ('場均得分 (PPG)', f"{p1_ppg:.1f}", f"{p2_ppg:.1f}"),
+                        ('出賽場次', p1_row.get('出賽', p1_row.get('場次', 0)), p2_row.get('出賽', p2_row.get('場次', 0))),
+                        ('真實命中率 (TS%)', format_pct(p1_row.get('TS%', '0%')), format_pct(p2_row.get('TS%', '0%'))),
+                        ('有效命中率 (eFG%)', format_pct(p1_row.get('eFG%', '0%')), format_pct(p2_row.get('eFG%', '0%'))),
+                        ('球權使用率 (USG%)', format_pct(p1_row.get('USG%', '0%')), format_pct(p2_row.get('USG%', '0%'))),
+                        ('三分出手比 (3PAr)', format_pct(p1_row.get('3PAr', '0%')), format_pct(p2_row.get('3PAr', '0%'))),
+                        ('買犯罰球比 (FTr)', format_pct(p1_row.get('FTr', '0%')), format_pct(p2_row.get('FTr', '0%'))),
+                        ('助攻失誤比 (AST/TO)', get_ast_to_ratio(p1_row), get_ast_to_ratio(p2_row)),
+                        ('籃板', p1_row.get('籃板', 0), p2_row.get('籃板', 0)),
+                        ('助攻', p1_row.get('助攻', 0), p2_row.get('助攻', 0)),
+                        ('抄截', p1_row.get('抄截', 0), p2_row.get('抄截', 0)),
+                        ('阻攻', p1_row.get('阻攻', 0), p2_row.get('阻攻', 0)),
+                        ('綜合評分 (GmSc)', p1_row.get('GmSc', p1_row.get('EFF', 0)), p2_row.get('GmSc', p2_row.get('EFF', 0)))
+                    ]
+
+                    cmp_df = pd.DataFrame(compare_metrics, columns=['指標項目', f"🟢 {p1_row['球員名']}", f"🟠 {p2_row['球員名']}"])
+                    st.dataframe(cmp_df, use_container_width=True, hide_index=True)
+                    st.caption("💡 提示：可切換不同球員組合，觀察不同體系後衛或禁區長人之間的風格差異。")
     else:
         st.info("💡 尚未讀取到球員數據母表。")
 
@@ -1584,7 +1607,7 @@ elif nav_selection == MENU_GLOSSARY:
 $$eFG\% = \frac{FGM + 0.5 \times 3PM}{FGA} \times 100\%$$
 * **數據意義**：傳統命中率 ($FG\%$) 將三分球與兩分球視為同等價值，有效命中率將三分球額外賦予 1.5 倍的得分權重，真實反映外線投射的期望回報。
 * **球探判讀標準**：
-  * **$> 60.0\%$**：聯盟頂級終結者 / 頂尖射手（如高柏鎧、飛克、迪亞洛）。
+  * **$> 60.0\%$**：聯盟頂級禁區終結者（如高柏鎧）/ 高效外線終結點（如沃許本、迪亞洛）。
   * **$53.0\% \sim 58.0\%$**：聯盟優質先發得分點。
   * **$< 48.0\%$**：出手效率偏低，多為受迫性出手或外線把握度不足。
 

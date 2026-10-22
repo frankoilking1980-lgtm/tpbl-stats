@@ -309,6 +309,7 @@ def parse_summary_sheet(filepath):
     return block_a, block_b
     
 # ----------------- 提取各隊專屬 PBP 表格 (相容直排與橫排) -----------------
+# ----------------- 提取各隊專屬 PBP 表格 (雙模智慧解析：相容例行賽縱向與熱身賽橫向) -----------------
 def extract_pbp_blocks(filepath):
     if not filepath or not os.path.exists(filepath):
         return {}, pd.DataFrame()
@@ -324,85 +325,168 @@ def extract_pbp_blocks(filepath):
         return {}, pd.DataFrame()
 
     blocks = {}
-    r_onoff, c_onoff = None, None
-    r_lineup, c_lineup = None, None
-    r_duo, c_duo = None, None
-
+    
+    # 判斷是「縱向垂直排版（例行賽）」還是「橫向並排（熱身賽）」
+    has_vertical_brackets = False
     for r in range(len(df)):
-        for c in range(len(df.columns)):
-            val = str(df.iloc[r, c]).strip()
-            if "【" in val:
-                if "on/off" in val.lower() or "淨影響力" in val:
-                    if r_onoff is None: r_onoff, c_onoff = r, c
-                elif "五人陣容" in val:
-                    if r_lineup is None: r_lineup, c_lineup = r, c
-                elif "雙洋將" in val or "化學效應" in val:
-                    if r_duo is None: r_duo, c_duo = r, c
-
-    def extract_subtable(title_r, title_c):
-        if title_r is None or title_c is None:
-            return pd.DataFrame()
-        header_row_idx = title_r + 1
-        if header_row_idx >= len(df):
-            return pd.DataFrame()
-        
-        headers = []
-        col_indices = []
-        for cur_c in range(title_c, len(df.columns)):
-            h_val = df.iloc[header_row_idx, cur_c]
-            if pd.isna(h_val) or str(h_val).strip() == "" or str(h_val).startswith("Unnamed") or str(h_val) == "nan":
+        for c in range(min(5, len(df.columns))):
+            v = str(df.iloc[r, c]).strip()
+            if v.startswith("【") and any(k in v for k in ["on/off", "淨影響力", "五人陣容", "雙洋將", "陣容"]):
+                has_vertical_brackets = True
                 break
-            headers.append(str(h_val).strip())
-            col_indices.append(cur_c)
-            
-        if not headers:
-            return pd.DataFrame()
-            
-        data_rows = []
-        for cur_r in range(header_row_idx + 1, min(len(df), header_row_idx + 35)):
-            first_val = str(df.iloc[cur_r, title_c]).strip()
-            if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
-                break
-            data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
-            
-        res = pd.DataFrame(data_rows, columns=headers)
-        res = clean_dataframe_times(res)
-        return deduplicate_columns(res)
-
-    if r_onoff is not None:
-        blocks['on_off'] = extract_subtable(r_onoff, c_onoff)
-    if r_lineup is not None:
-        blocks['lineup'] = extract_subtable(r_lineup, c_lineup)
-    if r_duo is not None:
-        blocks['duo'] = extract_subtable(r_duo, c_duo)
-
-    box_header_row = None
-    for r in range(min(12, len(df))):
-        row_str = " ".join([str(v) for v in df.iloc[r, :8] if pd.notna(v)])
-        if "球員名" in row_str and ("得分" in row_str or "出賽" in row_str):
-            box_header_row = r
+        if has_vertical_brackets:
             break
 
-    if box_header_row is not None:
-        end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
-        box_df = df.iloc[box_header_row + 1 : end_box].copy()
-        raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
-        valid_cols_idx = []
-        seen = set()
-        for idx_h, h in enumerate(raw_headers):
-            if "Unnamed" in h or h == "" or "nan" in h or "【" in h:
+    # =========================================================
+    # 模式 A：縱向垂直排版（例行賽標準格式）
+    # =========================================================
+    if has_vertical_brackets:
+        r_onoff, c_onoff = None, None
+        r_lineup, c_lineup = None, None
+        r_duo, c_duo = None, None
+
+        for r in range(len(df)):
+            for c in range(min(5, len(df.columns))):
+                val = str(df.iloc[r, c]).strip()
+                if val.startswith("【"):
+                    if "on/off" in val.lower() or "淨影響力" in val:
+                        if r_onoff is None: r_onoff, c_onoff = r, c
+                    elif "五人陣容" in val:
+                        if r_lineup is None: r_lineup, c_lineup = r, c
+                    elif "雙洋將" in val or "化學效應" in val or "洋將搭檔" in val:
+                        if r_duo is None: r_duo, c_duo = r, c
+
+        def extract_vertical_subtable(title_r, title_c):
+            if title_r is None or title_c is None:
+                return pd.DataFrame()
+            header_row_idx = title_r + 1
+            if header_row_idx >= len(df):
+                return pd.DataFrame()
+            headers = []
+            col_indices = []
+            for cur_c in range(title_c, len(df.columns)):
+                h_val = df.iloc[header_row_idx, cur_c]
+                if pd.isna(h_val) or str(h_val).strip() == "" or str(h_val).startswith("Unnamed") or str(h_val) == "nan":
+                    break
+                headers.append(str(h_val).strip())
+                col_indices.append(cur_c)
+            if not headers:
+                return pd.DataFrame()
+            data_rows = []
+            for cur_r in range(header_row_idx + 1, min(len(df), header_row_idx + 40)):
+                first_val = str(df.iloc[cur_r, title_c]).strip()
+                if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
+                    break
+                data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
+            res = pd.DataFrame(data_rows, columns=headers)
+            res = clean_dataframe_times(res)
+            return deduplicate_columns(res)
+
+        if r_onoff is not None:
+            blocks['on_off'] = extract_vertical_subtable(r_onoff, c_onoff)
+        if r_lineup is not None:
+            blocks['lineup'] = extract_vertical_subtable(r_lineup, c_lineup)
+        if r_duo is not None:
+            blocks['duo'] = extract_vertical_subtable(r_duo, c_duo)
+
+        box_header_row = None
+        for r in range(min(12, len(df))):
+            row_str = " ".join([str(v) for v in df.iloc[r, :8] if pd.notna(v)])
+            if "球員名" in row_str and ("得分" in row_str or "出賽" in row_str or "背號" in row_str):
+                box_header_row = r
                 break
-            if h in seen:
-                break
-            seen.add(h)
-            valid_cols_idx.append(idx_h)
-            
-        box_df = box_df.iloc[:, valid_cols_idx].copy()
-        box_df.columns = [raw_headers[i] for i in valid_cols_idx]
-        box_df = clean_dataframe_times(box_df)
-        box_df = deduplicate_columns(box_df.dropna(how='all', axis=0))
+        if box_header_row is not None:
+            end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
+            raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
+            valid_cols_idx = []
+            seen = set()
+            for idx_h, h in enumerate(raw_headers):
+                if "Unnamed" in h or h == "" or "nan" in h or "【" in h or (idx_h > 5 and h in seen):
+                    break
+                seen.add(h)
+                valid_cols_idx.append(idx_h)
+            box_df = df.iloc[box_header_row + 1 : end_box, valid_cols_idx].copy()
+            box_df.columns = [raw_headers[i] for i in valid_cols_idx]
+            box_df = clean_dataframe_times(box_df)
+            box_df = deduplicate_columns(box_df.dropna(how='all', axis=0))
+        else:
+            box_df = pd.DataFrame()
+
+    # =========================================================
+    # 模式 B：橫向並排排版（熱身賽格式）
+    # =========================================================
     else:
-        box_df = pd.DataFrame()
+        header_r = None
+        for r in range(min(10, len(df))):
+            row_str = " ".join([str(v) for v in df.iloc[r, :10] if pd.notna(v)])
+            if "球員名" in row_str and ("背號" in row_str or "出賽" in row_str):
+                header_r = r
+                break
+        
+        if header_r is None:
+            return {}, pd.DataFrame()
+
+        row_headers = [str(df.iloc[header_r, c]).strip() if pd.notna(df.iloc[header_r, c]) else "" for c in range(len(df.columns))]
+
+        def extract_horizontal_subtable(start_c):
+            if start_c is None or start_c >= len(row_headers):
+                return pd.DataFrame()
+            cols = []
+            col_idxs = []
+            for c in range(start_c, len(row_headers)):
+                h = row_headers[c]
+                if not h or h == "nan" or h.startswith("Unnamed"):
+                    break
+                cols.append(h)
+                col_idxs.append(c)
+            if not cols:
+                return pd.DataFrame()
+            data = []
+            for r in range(header_r + 1, len(df)):
+                val = df.iloc[r, col_idxs[0]]
+                if pd.isna(val) or str(val).strip() == "" or str(val) == "nan":
+                    break
+                data.append([df.iloc[r, ci] for ci in col_idxs])
+            res = pd.DataFrame(data, columns=cols)
+            res = clean_dataframe_times(res)
+            return deduplicate_columns(res)
+
+        # 1. 抓取 Box Score（由第 0 欄開始）
+        box_df = extract_horizontal_subtable(0)
+
+        # 2. 抓取 On/Off（定位第二個「球員名」所在欄位）
+        onoff_c = None
+        for c in range(5, len(row_headers)):
+            if "On_ORtg" in row_headers[c] or "累計在場時間" in row_headers[c]:
+                onoff_c = c - 1 if (c > 0 and row_headers[c-1] == "球員名") else c
+                break
+            elif "淨影響力" in row_headers[c]:
+                for back_c in range(c, max(0, c - 8), -1):
+                    if row_headers[back_c] == "球員名":
+                        onoff_c = back_c
+                        break
+                if onoff_c is not None:
+                    break
+        if onoff_c is not None:
+            blocks['on_off'] = extract_horizontal_subtable(onoff_c)
+
+        # 3. 抓取五人陣容（定位「五人陣容組合」所在欄位）
+        lineup_c = None
+        for c in range(5, len(row_headers)):
+            if "五人陣容" in row_headers[c]:
+                lineup_c = c
+                break
+        if lineup_c is not None:
+            blocks['lineup'] = extract_horizontal_subtable(lineup_c)
+
+        # 4. 抓取雙洋將化學效應（定位「洋將搭檔」或「雙洋將」所在欄位）
+        duo_c = None
+        for c in range(5, len(row_headers)):
+            if "洋將搭檔" in row_headers[c] or "雙洋將" in row_headers[c]:
+                duo_c = c
+                break
+        if duo_c is not None:
+            blocks['duo'] = extract_horizontal_subtable(duo_c)
 
     return blocks, box_df
     

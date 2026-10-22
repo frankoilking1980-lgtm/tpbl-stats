@@ -247,17 +247,26 @@ def find_team_file_in_folders(candidate_dirs, team_name):
                     return os.path.join(d, fname)
     return None
 
-# ----------------- 單場對決雙向長條圖組件 (緊湊單行字串，消除程式碼黑框) -----------------
+# ----------------- 單場對決雙向長條圖組件 (支援命中數與比率解析) -----------------
 def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True):
-    try:
-        num_a = float(str(val_away).replace('%', '').replace('+', ''))
-        num_h = float(str(val_home).replace('%', '').replace('+', ''))
-    except:
-        num_a, num_h = 0.0, 0.0
-        
+    def parse_stat(v):
+        s = str(v).strip().replace('%', '').replace('+', '')
+        if '/' in s:
+            try:
+                return float(s.split('/')[0])
+            except:
+                return 0.0
+        try:
+            return float(s)
+        except:
+            return 0.0
+
+    num_a = parse_stat(val_away)
+    num_h = parse_stat(val_home)
+    
     tot = (num_a + num_h) if (num_a + num_h) > 0 else 1.0
-    pct_a = min(100.0, max(6.0, (num_a / tot) * 100.0))
-    pct_h = min(100.0, max(6.0, (num_h / tot) * 100.0))
+    pct_a = min(100.0, max(8.0, (num_a / tot) * 100.0))
+    pct_h = min(100.0, max(8.0, (num_h / tot) * 100.0))
     
     if higher_is_better:
         color_a = "#00E676" if num_a > num_h else "#757575"
@@ -270,6 +279,29 @@ def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True
     disp_h = f"{val_home:.1f}%" if is_pct and isinstance(val_home, (int, float)) else str(val_home)
     
     return f'<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem;"><div style="width: 16%; text-align: right; font-weight: 700; color: {color_a}; font-size: 1.05rem;">{disp_a}</div><div style="width: 26%; display: flex; justify-content: flex-end; padding-right: 8px;"><div style="width: {pct_a:.1f}%; background: {color_a}; height: 8px; border-radius: 4px;"></div></div><div style="width: 32%; text-align: center; color: #BBB; font-weight: 600; white-space: nowrap; font-size: 0.9rem;">{label}</div><div style="width: 26%; display: flex; justify-content: flex-start; padding-left: 8px;"><div style="width: {pct_h:.1f}%; background: {color_h}; height: 8px; border-radius: 4px;"></div></div><div style="width: 16%; text-align: left; font-weight: 700; color: {color_h}; font-size: 1.05rem;">{disp_h}</div></div>'
+
+# ----------------- 分離五人陣容與核心搭檔表格 -----------------
+def split_lineup_and_pairs(df_lineup):
+    if df_lineup is None or df_lineup.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    col0 = df_lineup.columns[0]
+    split_idx = None
+    for idx, r in df_lineup.iterrows():
+        val = str(r[col0]).strip()
+        if "核心搭檔" in val or "Key Pairs" in val:
+            split_idx = idx
+            break
+    if split_idx is not None:
+        df_5man = df_lineup.loc[:split_idx - 1].copy()
+        df_pairs = df_lineup.loc[split_idx + 1:].copy()
+    else:
+        mask_pairs = df_lineup[col0].astype(str).str.contains(r'\+')
+        df_5man = df_lineup[~mask_pairs].copy()
+        df_pairs = df_lineup[mask_pairs].copy()
+
+    df_5man = df_5man.dropna(subset=[col0]).dropna(how='all', axis=1)
+    df_pairs = df_pairs.dropna(subset=[col0]).dropna(how='all', axis=1)
+    return df_5man, df_pairs
 
 # ----------------- 單場比賽工作表數據抽取器 -----------------
 def extract_single_game_data(filepath, sheet_name):
@@ -935,11 +967,11 @@ elif nav_selection == MENU_SCATTER:
         st.info("💡 尚未讀取到球員進階數據母表。")
 
 # =========================================================================
-# 分頁 3：單場賽事實況與進階數據覆盤
+# 分頁 3：單場賽事實況與進階數據覆盤 (Game Breakdown)
 # =========================================================================
 elif nav_selection == MENU_GAME:
     st.subheader(f"📅 {stage_selection} — 單場賽事實況與進階數據覆盤 (Game Breakdown)")
-    st.markdown("以官方逐球紀錄為基底，深度解析兩隊單場【進階四要素雙向對決】、【關鍵五人陣容】與【球員單場進階 Box Score】。")
+    st.markdown("以官方逐球紀錄為基底，深度解析兩隊單場【進階四要素雙向對決】、【關鍵五人陣容】、【核心雙人搭檔】與【球員單場進階 Box Score】。")
 
     sched_file = find_file_in_folders(active_dirs, "schedule.json")
     schedule_data = []
@@ -971,24 +1003,24 @@ elif nav_selection == MENU_GAME:
         color_away = "#00E676" if away_score > home_score else "#FFFFFF"
         color_home = "#00E676" if home_score > away_score else "#FFFFFF"
 
-        # 頂部賽事記分板橫幅
+        # 頂部賽事記分板橫幅 (中間 G01 / FINAL / 日期 加大加粗排版)
         st.markdown(f"""
-        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 20px 14px; margin: 12px 0 24px 0;">
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; padding: 22px 16px; margin: 12px 0 24px 0;">
             <div style="display: flex; justify-content: space-between; align-items: center; text-align: center;">
                 <div style="flex: 1.2;">
-                    <div style="color: #888; font-size: 0.88rem; margin-bottom: 2px;">客隊 (AWAY)</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; color: #EEE;">{away_team}</div>
-                    <div style="font-size: 2.8rem; font-weight: 900; color: {color_away}; line-height: 1.1;">{away_score}</div>
+                    <div style="color: #AAA; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; letter-spacing: 0.5px;">客隊 (AWAY)</div>
+                    <div style="font-size: 1.65rem; font-weight: 800; color: #FFFFFF; margin-bottom: 4px;">{away_team}</div>
+                    <div style="font-size: 3.4rem; font-weight: 900; color: {color_away}; line-height: 1.1;">{away_score}</div>
                 </div>
-                <div style="flex: 0.8; padding: 0 8px;">
-                    <div style="display: inline-block; background: rgba(0, 230, 118, 0.15); color: #00E676; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; margin-bottom: 6px;">{cur_game.get('status', 'FINAL')}</div>
-                    <div style="color: #FFF; font-size: 1.1rem; font-weight: 700; margin-bottom: 2px;">{cur_game.get('game_id')}</div>
-                    <div style="color: #888; font-size: 0.82rem;">{cur_game.get('date')} {cur_game.get('time', '')}</div>
+                <div style="flex: 1.0; padding: 0 10px;">
+                    <div style="display: inline-block; background: rgba(0, 230, 118, 0.2); color: #00E676; padding: 6px 18px; border-radius: 20px; font-weight: 800; font-size: 1.15rem; letter-spacing: 1px; margin-bottom: 8px; border: 1px solid rgba(0, 230, 118, 0.3);">{cur_game.get('status', 'FINAL')}</div>
+                    <div style="color: #FFFFFF; font-size: 2.3rem; font-weight: 900; letter-spacing: 2px; line-height: 1.1; margin-bottom: 4px;">{cur_game.get('game_id')}</div>
+                    <div style="color: #CCCCCC; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.5px;">{cur_game.get('date')} {cur_game.get('time', '')}</div>
                 </div>
                 <div style="flex: 1.2;">
-                    <div style="color: #888; font-size: 0.88rem; margin-bottom: 2px;">主隊 (HOME)</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; color: #EEE;">{home_team}</div>
-                    <div style="font-size: 2.8rem; font-weight: 900; color: {color_home}; line-height: 1.1;">{home_score}</div>
+                    <div style="color: #AAA; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; letter-spacing: 0.5px;">主隊 (HOME)</div>
+                    <div style="font-size: 1.65rem; font-weight: 800; color: #FFFFFF; margin-bottom: 4px;">{home_team}</div>
+                    <div style="font-size: 3.4rem; font-weight: 900; color: {color_home}; line-height: 1.1;">{home_score}</div>
                 </div>
             </div>
         </div>
@@ -1036,7 +1068,7 @@ elif nav_selection == MENU_GAME:
             ftr_h = fta_h / fga_h if fga_h > 0 else 0.0
 
             st.markdown("#### ⚔️ 兩隊進階四要素與攻防效率雙向對決")
-            st.markdown(f'<div style="text-align: center; color: #888; margin-bottom: 10px;">【客隊】<span style="color: #00E676; font-weight: bold;">{away_team}</span> vs 【主隊】<span style="color: #00E676; font-weight: bold;">{home_team}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="text-align: center; color: #888; margin-bottom: 12px; font-size: 1.05rem;">【客隊】<span style="color: #00E676; font-weight: bold;">{away_team}</span> vs 【主隊】<span style="color: #00E676; font-weight: bold;">{home_team}</span></div>', unsafe_allow_html=True)
 
             bars_html = "".join([
                 render_bi_bar("百回合進攻效率 (ORtg)", f"{ortg_a:.1f}", f"{ortg_h:.1f}", higher_is_better=True),
@@ -1052,35 +1084,61 @@ elif nav_selection == MENU_GAME:
                 render_bi_bar("罰球命中 (FTM/FTA)", f"{int(stats_away.get('罰球命中', 0))}/{int(fta_a)}", f"{int(stats_home.get('罰球命中', 0))}/{int(fta_h)}", higher_is_better=True),
             ])
 
-            st.markdown(f'<div style="background: rgba(255, 255, 255, 0.02); padding: 16px 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 24px;">{bars_html}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background: rgba(255, 255, 255, 0.02); padding: 18px 22px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 26px;">{bars_html}</div>', unsafe_allow_html=True)
 
-            st.markdown("#### 🏆 單場關鍵五人陣容對抗 (Game Lineups)")
+            # 分離五人陣容與核心搭檔
+            lineup_5man_away, pairs_away = split_lineup_and_pairs(lineup_away)
+            lineup_5man_home, pairs_home = split_lineup_and_pairs(lineup_home)
+
+            # 模組 1：單場關鍵五人陣容對抗
+            st.markdown("#### 🏆 單場關鍵五人陣容對抗 (Top 5-Man Lineups)")
             col_l_a, col_l_h = st.columns(2)
             with col_l_a:
-                st.markdown(f"**客隊：{away_team} 主要陣容**")
-                if not lineup_away.empty:
-                    st.dataframe(lineup_away, use_container_width=True, hide_index=True)
+                st.markdown(f"**客隊：{away_team} 主要五人陣容**")
+                if not lineup_5man_away.empty:
+                    st.dataframe(lineup_5man_away, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"💡 {away_team} 本場暫無五人陣容細部統計。")
 
             with col_l_h:
-                st.markdown(f"**主隊：{home_team} 主要陣容**")
-                if not lineup_home.empty:
-                    st.dataframe(lineup_home, use_container_width=True, hide_index=True)
+                st.markdown(f"**主隊：{home_team} 主要五人陣容**")
+                if not lineup_5man_home.empty:
+                    st.dataframe(lineup_5man_home, use_container_width=True, hide_index=True)
                 else:
                     st.info(f"💡 {home_team} 本場暫無五人陣容細部統計。")
 
-            st.markdown("#### 📋 兩隊球員單場攻守數據 (Single-Game Box Score)")
-            tab_box_a, tab_box_h = st.tabs([f"🏀 {away_team} 球員單場攻守", f"🏀 {home_team} 球員單場攻守"])
-            with tab_box_a:
+            # 模組 2：單場核心雙人搭檔效益 (獨立單獨一個表)
+            if not pairs_away.empty or not pairs_home.empty:
+                st.markdown("#### 🤝 單場核心雙人搭檔效益 (Key Pairs Chemistry)")
+                col_p_a, col_p_h = st.columns(2)
+                with col_p_a:
+                    st.markdown(f"**客隊：{away_team} 核心搭檔**")
+                    if not pairs_away.empty:
+                        st.dataframe(pairs_away, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"💡 {away_team} 本場暫無雙人搭檔統計。")
+
+                with col_p_h:
+                    st.markdown(f"**主隊：{home_team} 核心搭檔**")
+                    if not pairs_home.empty:
+                        st.dataframe(pairs_home, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"💡 {home_team} 本場暫無雙人搭檔統計。")
+
+            # 模組 3：兩隊球員單場攻守數據 (一左一右並排展示，加大字號高度)
+            st.markdown("#### 📋 兩隊球員單場進階攻守數據 (Single-Game Box Score)")
+            col_box_a, col_box_h = st.columns(2)
+            with col_box_a:
+                st.markdown(f'<div style="font-size: 1.15rem; font-weight: 700; color: #00E676; margin-bottom: 8px;">🏀 客隊：{away_team} 球員單場攻守</div>', unsafe_allow_html=True)
                 if not box_away.empty:
-                    st.dataframe(box_away, use_container_width=True, hide_index=True)
+                    st.dataframe(box_away, use_container_width=True, hide_index=True, height=540)
                 else:
                     st.info(f"💡 {away_team} 本場球員攻守數據載入失敗。")
 
-            with tab_box_h:
+            with col_box_h:
+                st.markdown(f'<div style="font-size: 1.15rem; font-weight: 700; color: #00E676; margin-bottom: 8px;">🏀 主隊：{home_team} 球員單場攻守</div>', unsafe_allow_html=True)
                 if not box_home.empty:
-                    st.dataframe(box_home, use_container_width=True, hide_index=True)
+                    st.dataframe(box_home, use_container_width=True, hide_index=True, height=540)
                 else:
                     st.info(f"💡 {home_team} 本場球員攻守數據載入失敗。")
 
@@ -1116,6 +1174,7 @@ elif nav_selection == MENU_PBP:
             df_duo = blocks['duo'].copy()
             headers = list(df_duo.columns)
             
+            # 自適應原生表格：前段數據緊湊貼合 (width: 1%)，後段建議自動展開鋪滿
             html = [
                 '<div style="overflow-x: auto; width: 100%; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 20px;">',
                 '<table style="width: 100%; border-collapse: collapse; font-size: 0.95rem; background-color: rgba(255,255,255,0.02); text-align: left;">',

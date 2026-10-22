@@ -307,7 +307,104 @@ def parse_summary_sheet(filepath):
             block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
 
     return block_a, block_b
+# ----------------- 提取各隊專屬 PBP 表格 -----------------
+def extract_pbp_blocks(filepath):
+    if not filepath or not os.path.exists(filepath):
+        return {}, pd.DataFrame()
+    try:
+        xls = pd.ExcelFile(filepath)
+        target_sheet = 0
+        for s in xls.sheet_names:
+            if "平均" in s or "pbp" in s.lower() or "陣容" in s:
+                target_sheet = s
+                break
+        df = pd.read_excel(filepath, sheet_name=target_sheet, header=None)
+    except Exception:
+        return {}, pd.DataFrame()
 
+    blocks = {}
+    r_onoff, c_onoff = None, None
+    r_lineup, c_lineup = None, None
+    r_duo, c_duo = None, None
+
+    for r in range(len(df)):
+        for c in range(len(df.columns)):
+            val = str(df.iloc[r, c]).strip()
+            if "【" in val:
+                if "on/off" in val.lower() or "淨影響力" in val:
+                    if r_onoff is None: r_onoff, c_onoff = r, c
+                elif "五人陣容" in val:
+                    if r_lineup is None: r_lineup, c_lineup = r, c
+                elif "雙洋將" in val or "化學效應" in val:
+                    if r_duo is None: r_duo, c_duo = r, c
+
+    def extract_subtable(title_r, title_c):
+        if title_r is None or title_c is None:
+            return pd.DataFrame()
+        header_row_idx = title_r + 1
+        if header_row_idx >= len(df):
+            return pd.DataFrame()
+        
+        headers = []
+        col_indices = []
+        for cur_c in range(title_c, len(df.columns)):
+            h_val = df.iloc[header_row_idx, cur_c]
+            if pd.isna(h_val) or str(h_val).strip() == "" or str(h_val).startswith("Unnamed") or str(h_val) == "nan":
+                break
+            headers.append(str(h_val).strip())
+            col_indices.append(cur_c)
+            
+        if not headers:
+            return pd.DataFrame()
+            
+        data_rows = []
+        for cur_r in range(header_row_idx + 1, min(len(df), header_row_idx + 35)):
+            first_val = str(df.iloc[cur_r, title_c]).strip()
+            if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
+                break
+            data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
+            
+        res = pd.DataFrame(data_rows, columns=headers)
+        res = clean_dataframe_times(res)
+        return deduplicate_columns(res)
+
+    if r_onoff is not None:
+        blocks['on_off'] = extract_subtable(r_onoff, c_onoff)
+    if r_lineup is not None:
+        blocks['lineup'] = extract_subtable(r_lineup, c_lineup)
+    if r_duo is not None:
+        blocks['duo'] = extract_subtable(r_duo, c_duo)
+
+    box_header_row = None
+    for r in range(min(12, len(df))):
+        row_str = " ".join([str(v) for v in df.iloc[r, :8] if pd.notna(v)])
+        if "球員名" in row_str and ("得分" in row_str or "出賽" in row_str):
+            box_header_row = r
+            break
+
+    if box_header_row is not None:
+        end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
+        box_df = df.iloc[box_header_row + 1 : end_box].copy()
+        raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
+        valid_cols_idx = []
+        seen = set()
+        for idx_h, h in enumerate(raw_headers):
+            if "Unnamed" in h or h == "" or "nan" in h or "【" in h:
+                break
+            if h in seen:
+                break
+            seen.add(h)
+            valid_cols_idx.append(idx_h)
+            
+        box_df = box_df.iloc[:, valid_cols_idx].copy()
+        box_df.columns = [raw_headers[i] for i in valid_cols_idx]
+        box_df = clean_dataframe_times(box_df)
+        box_df = deduplicate_columns(box_df.dropna(how='all', axis=0))
+    else:
+        box_df = pd.DataFrame()
+
+    return blocks, box_df
+    
 # ----------------- 取得球員母表數據 -----------------
 @st.cache_data(ttl=300)
 def get_master_players(candidate_dirs):

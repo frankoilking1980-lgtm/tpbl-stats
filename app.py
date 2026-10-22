@@ -251,130 +251,62 @@ def find_team_file_in_folders(candidate_dirs, team_name):
                     return os.path.join(d, fname)
     return None
 
-# ----------------- 取得球員母表數據 (智慧適配 1~5 列任意表頭) -----------------
-@st.cache_data(ttl=300)
-def get_master_players(candidate_dirs):
-    f_master = find_file_in_folders(candidate_dirs, "進階數據與戰力評級總表")
-    if f_master:
-        try:
-            xls = pd.ExcelFile(f_master)
-            for s in xls.sheet_names:
-                df_raw = pd.read_excel(f_master, sheet_name=s, header=None)
-                # 掃描前 8 行，找出哪一行有「球員名」
-                for r_idx in range(min(8, len(df_raw))):
-                    row_vals = [str(x).strip() for x in df_raw.iloc[r_idx].values if pd.notna(x)]
-                    if '球員名' in row_vals:
-                        df = pd.read_excel(f_master, sheet_name=s, header=r_idx)
-                        return clean_dataframe_times(deduplicate_columns(df))
-        except Exception:
-            pass
-
-    f_csv = find_file_in_folders(candidate_dirs, "全聯盟球員進階數據總表")
-    if f_csv:
-        try:
-            return clean_dataframe_times(deduplicate_columns(pd.read_csv(f_csv)))
-        except Exception:
-            pass
-
-    return pd.DataFrame()
-
-# ----------------- 提取各隊專屬 PBP 表格 -----------------
-def extract_pbp_blocks(filepath):
-    if not filepath or not os.path.exists(filepath):
-        return {}, pd.DataFrame()
+# ----------------- 總表拆解解析 (自動探測表頭，相容各種註釋行) -----------------
+def parse_summary_sheet(filepath):
     try:
-        xls = pd.ExcelFile(filepath)
-        target_sheet = 0
-        for s in xls.sheet_names:
-            if "平均" in s or "pbp" in s.lower() or "陣容" in s:
-                target_sheet = s
-                break
-        df = pd.read_excel(filepath, sheet_name=target_sheet, header=None)
+        if filepath.lower().endswith('.csv'):
+            df_raw = pd.read_csv(filepath, header=None)
+        else:
+            df_raw = pd.read_excel(filepath, sheet_name=0, header=None)
     except Exception:
-        return {}, pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
-    blocks = {}
-    r_onoff, c_onoff = None, None
-    r_lineup, c_lineup = None, None
-    r_duo, c_duo = None, None
+    if df_raw is None or df_raw.empty:
+        return pd.DataFrame(), pd.DataFrame()
 
-    for r in range(len(df)):
-        for c in range(len(df.columns)):
-            val = str(df.iloc[r, c]).strip()
-            if "【" in val:
-                if "on/off" in val.lower() or "淨影響力" in val:
-                    if r_onoff is None: r_onoff, c_onoff = r, c
-                elif "五人陣容" in val:
-                    if r_lineup is None: r_lineup, c_lineup = r, c
-                elif "雙洋將" in val or "化學效應" in val:
-                    if r_duo is None: r_duo, c_duo = r, c
+    row_block_a_title = None
+    row_block_b_title = None
 
-    def extract_subtable(title_r, title_c):
-        if title_r is None or title_c is None:
-            return pd.DataFrame()
-        header_row_idx = title_r + 1
-        if header_row_idx >= len(df):
-            return pd.DataFrame()
+    for idx, row in df_raw.iterrows():
+        row_str = " ".join([str(v) for v in row.values if pd.notna(v)])
+        if "【區塊 A" in row_str or "區塊 A" in row_str:
+            row_block_a_title = idx
+        elif "【區塊 B" in row_str or "區塊 B" in row_str:
+            row_block_b_title = idx
+
+    # 解析區塊 A：往下自動尋找含有「球隊名稱」或「團隊總得分」的正確表頭列
+    block_a = pd.DataFrame()
+    if row_block_a_title is not None:
+        header_a_idx = None
+        search_end = row_block_b_title if row_block_b_title is not None else row_block_a_title + 5
+        for r in range(row_block_a_title + 1, min(len(df_raw), search_end)):
+            row_str = " ".join([str(v) for v in df_raw.iloc[r].values if pd.notna(v)])
+            if "球隊名稱" in row_str or "團隊總得分" in row_str or "戰績" in row_str:
+                header_a_idx = r
+                break
         
-        headers = []
-        col_indices = []
-        for cur_c in range(title_c, len(df.columns)):
-            h_val = df.iloc[header_row_idx, cur_c]
-            if pd.isna(h_val) or str(h_val).strip() == "" or str(h_val).startswith("Unnamed") or str(h_val) == "nan":
-                break
-            headers.append(str(h_val).strip())
-            col_indices.append(cur_c)
-            
-        if not headers:
-            return pd.DataFrame()
-            
-        data_rows = []
-        for cur_r in range(header_row_idx + 1, min(len(df), header_row_idx + 35)):
-            first_val = str(df.iloc[cur_r, title_c]).strip()
-            if pd.isna(df.iloc[cur_r, title_c]) or first_val == "" or first_val == "nan" or first_val.startswith("【"):
-                break
-            data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
-            
-        res = pd.DataFrame(data_rows, columns=headers)
-        res = clean_dataframe_times(res)
-        return deduplicate_columns(res)
+        if header_a_idx is not None:
+            end_a = row_block_b_title if row_block_b_title is not None else header_a_idx + 8
+            block_a = df_raw.iloc[header_a_idx + 1 : end_a].copy()
+            block_a.columns = [str(c).strip() for c in df_raw.iloc[header_a_idx].tolist()]
+            block_a = clean_dataframe_times(deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)))
 
-    if r_onoff is not None:
-        blocks['on_off'] = extract_subtable(r_onoff, c_onoff)
-    if r_lineup is not None:
-        blocks['lineup'] = extract_subtable(r_lineup, c_lineup)
-    if r_duo is not None:
-        blocks['duo'] = extract_subtable(r_duo, c_duo)
-
-    box_header_row = None
-    for r in range(min(12, len(df))):
-        row_str = " ".join([str(v) for v in df.iloc[r, :8] if pd.notna(v)])
-        if "球員名" in row_str and ("得分" in row_str or "出賽" in row_str):
-            box_header_row = r
-            break
-
-    if box_header_row is not None:
-        end_box = r_onoff if (r_onoff is not None and c_onoff == 0 and r_onoff > box_header_row) else len(df)
-        box_df = df.iloc[box_header_row + 1 : end_box].copy()
-        raw_headers = [str(x).strip() for x in df.iloc[box_header_row].tolist()]
-        valid_cols_idx = []
-        seen = set()
-        for idx_h, h in enumerate(raw_headers):
-            if "Unnamed" in h or h == "" or "nan" in h or "【" in h:
+    # 解析區塊 B：往下自動尋找含有「高球權核心」或「戰力短評」的正確表頭列
+    block_b = pd.DataFrame()
+    if row_block_b_title is not None:
+        header_b_idx = None
+        for r in range(row_block_b_title + 1, min(len(df_raw), row_block_b_title + 5)):
+            row_str = " ".join([str(v) for v in df_raw.iloc[r].values if pd.notna(v)])
+            if "球隊名稱" in row_str or "高球權核心" in row_str or "短評" in row_str:
+                header_b_idx = r
                 break
-            if h in seen:
-                break
-            seen.add(h)
-            valid_cols_idx.append(idx_h)
-            
-        box_df = box_df.iloc[:, valid_cols_idx].copy()
-        box_df.columns = [raw_headers[i] for i in valid_cols_idx]
-        box_df = clean_dataframe_times(box_df)
-        box_df = deduplicate_columns(box_df.dropna(how='all', axis=0))
-    else:
-        box_df = pd.DataFrame()
+                
+        if header_b_idx is not None:
+            block_b = df_raw.iloc[header_b_idx + 1 : header_b_idx + 8].copy()
+            block_b.columns = [str(c).strip() for c in df_raw.iloc[header_b_idx].tolist()]
+            block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
 
-    return blocks, box_df
+    return block_a, block_b
 
 # ----------------- 取得球員母表數據 -----------------
 @st.cache_data(ttl=300)

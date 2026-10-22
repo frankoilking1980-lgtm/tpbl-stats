@@ -796,17 +796,22 @@ elif nav_selection == MENU_PBP:
         if 'duo' in blocks and not blocks['duo'].empty:
             df_duo = blocks['duo'].copy()
             
-            # 1. 寬度拉大並支援橫向滾動
+            # 定義各欄自適應寬度配置（數字緊湊，評論欄完全伸展）
+            duo_col_config = {
+                "洋將搭檔組合": st.column_config.TextColumn("洋將搭檔組合", width="medium"),
+                "共同時間": st.column_config.TextColumn("共同時間", width="small"),
+                "累計(+/-)": st.column_config.TextColumn("累計(+/-)", width="small"),
+                "Lineup ORtg": st.column_config.TextColumn("Lineup ORtg", width="small"),
+                "Lineup DRtg": st.column_config.TextColumn("Lineup DRtg", width="small"),
+                "Lineup NetRtg": st.column_config.TextColumn("Lineup NetRtg", width="small"),
+                "攻守特徵與搭配建議": st.column_config.TextColumn("攻守特徵與搭配建議", width="large")
+            }
+
             st.dataframe(
                 df_duo, 
                 use_container_width=True, 
                 hide_index=True,
-                column_config={
-                    "攻守特徵與搭配建議": st.column_config.TextColumn(
-                        "攻守特徵與搭配建議",
-                        width="large"
-                    )
-                }
+                column_config=duo_col_config
             )
 
             # 2. 自動提取評論，以自適應卡片完整展示文字（支援長文字自動換行）

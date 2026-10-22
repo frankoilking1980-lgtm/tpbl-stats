@@ -7,6 +7,7 @@ import os
 import glob
 import re
 import datetime
+import json
 
 # ----------------- 頁面全域設定 (100% 滿版排版) -----------------
 st.set_page_config(
@@ -91,9 +92,6 @@ div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
         padding: 0 !important;
         border: none !important;
         margin-bottom: 16px !important;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] > label:last-child {
-        grid-column: span 2 !important;
     }
     div[data-testid="stRadio"] label[data-baseweb="radio"] {
         display: flex !important;
@@ -216,14 +214,14 @@ def deduplicate_columns(df):
     df.columns = new_cols
     return df
 
-# ----------------- 支援資料夾分流的智慧找檔函式 -----------------
+# ----------------- 支援資料夾分流的智慧找檔函式 (支援 xlsx, xls, csv, json) -----------------
 def find_file_in_folders(candidate_dirs, keyword):
     keyword_clean = keyword.lower().strip()
     for d in candidate_dirs:
         if os.path.exists(d):
             for fname in os.listdir(d):
                 fname_lower = fname.lower()
-                if keyword_clean in fname_lower and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
+                if keyword_clean in fname_lower and fname_lower.endswith(('.xlsx', '.xls', '.csv', '.json')):
                     return os.path.join(d, fname)
     return None
 
@@ -245,6 +243,141 @@ def find_team_file_in_folders(candidate_dirs, team_name):
                 if any(kw.lower() in fname_lower for kw in kws) and fname_lower.endswith(('.xlsx', '.xls', '.csv')):
                     return os.path.join(d, fname)
     return None
+
+# ----------------- 單場對決雙向長條圖組件 -----------------
+def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True):
+    try:
+        num_a = float(str(val_away).replace('%', '').replace('+', ''))
+        num_h = float(str(val_home).replace('%', '').replace('+', ''))
+    except:
+        num_a, num_h = 0.0, 0.0
+        
+    tot = (num_a + num_h) if (num_a + num_h) > 0 else 1.0
+    pct_a = min(100.0, max(6.0, (num_a / tot) * 100.0))
+    pct_h = min(100.0, max(6.0, (num_h / tot) * 100.0))
+    
+    if higher_is_better:
+        color_a = "#00E676" if num_a > num_h else "#757575"
+        color_h = "#00E676" if num_h > num_a else "#757575"
+    else:
+        color_a = "#00E676" if num_a < num_h else "#757575"
+        color_h = "#00E676" if num_h < num_a else "#757575"
+
+    disp_a = f"{val_away:.1f}%" if is_pct and isinstance(val_away, (int, float)) else str(val_away)
+    disp_h = f"{val_home:.1f}%" if is_pct and isinstance(val_home, (int, float)) else str(val_home)
+    
+    return f"""
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem;">
+        <div style="width: 16%; text-align: right; font-weight: 700; color: {color_a}; font-size: 1.05rem;">{disp_a}</div>
+        <div style="width: 26%; display: flex; justify-content: flex-end; padding-right: 8px;">
+            <div style="width: {pct_a:.1f}%; background: {color_a}; height: 8px; border-radius: 4px;"></div>
+        </div>
+        <div style="width: 32%; text-align: center; color: #BBB; font-weight: 600; white-space: nowrap; font-size: 0.9rem;">{label}</div>
+        <div style="width: 26%; display: flex; justify-content: flex-start; padding-left: 8px;">
+            <div style="width: {pct_h:.1f}%; background: {color_h}; height: 8px; border-radius: 4px;"></div>
+        </div>
+        <div style="width: 16%; text-align: left; font-weight: 700; color: {color_h}; font-size: 1.05rem;">{disp_h}</div>
+    </div>
+    """
+
+# ----------------- 單場比賽工作表數據抽取器 -----------------
+def extract_single_game_data(filepath, sheet_name):
+    if not filepath or not os.path.exists(filepath):
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+    try:
+        xls = pd.ExcelFile(filepath)
+        matched_sheet = None
+        for s in xls.sheet_names:
+            if sheet_name == s or sheet_name in s or s in sheet_name:
+                matched_sheet = s
+                break
+            if "vs" in s and any(k in s for k in sheet_name.split() if len(k) >= 2):
+                matched_sheet = s
+                break
+                
+        if not matched_sheet:
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+
+        df = pd.read_excel(filepath, sheet_name=matched_sheet, header=None)
+        
+        header_r = None
+        for r in range(min(8, len(df))):
+            vals = [str(x).strip() for x in df.iloc[r, :6].dropna().tolist()]
+            if "球員名" in vals:
+                header_r = r
+                break
+                
+        if header_r is None:
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+
+        # 1. Box score
+        box_cols = []
+        box_col_idxs = []
+        for c in range(0, min(36, len(df.columns))):
+            h = str(df.iloc[header_r, c]).strip()
+            if not h or h == "nan" or h.startswith("Unnamed"):
+                break
+            box_cols.append(h)
+            box_col_idxs.append(c)
+
+        box_rows = []
+        for r in range(header_r + 1, len(df)):
+            p_name = df.iloc[r, 1] if len(df.columns) > 1 else None
+            if pd.isna(p_name) or str(p_name).strip() == "" or str(p_name) == "nan":
+                break
+            box_rows.append([df.iloc[r, ci] for ci in box_col_idxs])
+
+        box_df = pd.DataFrame(box_rows, columns=box_cols)
+        box_df = clean_dataframe_times(deduplicate_columns(box_df))
+
+        # 2. 提取右側陣容與 On/Off 表
+        def extract_sub(start_c):
+            if start_c is None or start_c >= len(df.columns):
+                return pd.DataFrame()
+            cols = []
+            c_idxs = []
+            for c in range(start_c, len(df.columns)):
+                h = str(df.iloc[header_r, c]).strip()
+                if not h or h == "nan" or h.startswith("Unnamed"):
+                    break
+                cols.append(h)
+                c_idxs.append(c)
+            if not cols:
+                return pd.DataFrame()
+            data = []
+            for r in range(header_r + 1, len(df)):
+                v = df.iloc[r, c_idxs[0]]
+                if pd.isna(v) or str(v).strip() == "" or str(v) == "nan":
+                    break
+                data.append([df.iloc[r, ci] for ci in c_idxs])
+            res = pd.DataFrame(data, columns=cols)
+            return clean_dataframe_times(deduplicate_columns(res))
+
+        onoff_c = None
+        lineup_c = None
+        for c in range(30, len(df.columns)):
+            val_r2 = str(df.iloc[header_r - 1, c]).strip() if header_r > 0 else ""
+            val_r3 = str(df.iloc[header_r, c]).strip()
+            if "On/Off" in val_r2 or "on/off" in val_r3.lower() or ("在場時間" in val_r3 and onoff_c is None):
+                onoff_c = c if val_r3 == "球員名" else (c-1 if df.iloc[header_r, c-1] == "球員名" else c)
+            if "陣容" in val_r2 or "陣容" in val_r3:
+                if lineup_c is None:
+                    lineup_c = c
+
+        onoff_df = extract_sub(onoff_c) if onoff_c else pd.DataFrame()
+        lineup_df = extract_sub(lineup_c) if lineup_c else pd.DataFrame()
+
+        # 3. 累加團隊統計
+        team_stats = {}
+        for col in ['得分', '投籃命中', '投籃出手', '三分命中', '三分出手', '罰球命中', '罰球出手', '進攻籃板', '防守籃板', '籃板', '助攻', '抄截', '阻攻', '失誤', '犯規']:
+            if col in box_df.columns:
+                team_stats[col] = float(pd.to_numeric(box_df[col], errors='coerce').fillna(0).sum())
+            else:
+                team_stats[col] = 0.0
+
+        return box_df, onoff_df, lineup_df, team_stats
+    except Exception:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
 
 # ----------------- 總表拆解解析 (自動探測表頭，相容各種註釋行) -----------------
 def parse_summary_sheet(filepath):
@@ -269,7 +402,6 @@ def parse_summary_sheet(filepath):
         elif "【區塊 B" in row_str or "區塊 B" in row_str:
             row_block_b_title = idx
 
-    # 解析區塊 A：往下自動尋找含有「球隊名稱」或「團隊總得分」的正確表頭列
     block_a = pd.DataFrame()
     if row_block_a_title is not None:
         header_a_idx = None
@@ -286,7 +418,6 @@ def parse_summary_sheet(filepath):
             block_a.columns = [str(c).strip() for c in df_raw.iloc[header_a_idx].tolist()]
             block_a = clean_dataframe_times(deduplicate_columns(block_a.dropna(how='all', axis=1).dropna(how='all', axis=0)))
 
-    # 解析區塊 B：往下自動尋找含有「高球權核心」或「戰力短評」的正確表頭列
     block_b = pd.DataFrame()
     if row_block_b_title is not None:
         header_b_idx = None
@@ -303,7 +434,7 @@ def parse_summary_sheet(filepath):
 
     return block_a, block_b
 
-# ----------------- 提取各隊專屬 PBP 表格 (雙模智慧解析：相容例行賽縱向與熱身賽橫向) -----------------
+# ----------------- 提取各隊專屬 PBP 表格 (雙模智慧解析) -----------------
 def extract_pbp_blocks(filepath):
     if not filepath or not os.path.exists(filepath):
         return {}, pd.DataFrame()
@@ -319,8 +450,6 @@ def extract_pbp_blocks(filepath):
         return {}, pd.DataFrame()
 
     blocks = {}
-    
-    # 判斷是「縱向垂直排版（例行賽）」還是「橫向並排（熱身賽）」
     has_vertical_brackets = False
     for r in range(len(df)):
         for c in range(min(5, len(df.columns))):
@@ -331,9 +460,6 @@ def extract_pbp_blocks(filepath):
         if has_vertical_brackets:
             break
 
-    # =========================================================
-    # 模式 A：縱向垂直排版（例行賽標準格式）
-    # =========================================================
     if has_vertical_brackets:
         r_onoff, c_onoff = None, None
         r_lineup, c_lineup = None, None
@@ -405,10 +531,6 @@ def extract_pbp_blocks(filepath):
             box_df = deduplicate_columns(box_df.dropna(how='all', axis=0))
         else:
             box_df = pd.DataFrame()
-
-    # =========================================================
-    # 模式 B：橫向並排排版（熱身賽格式）
-    # =========================================================
     else:
         header_r = None
         for r in range(min(10, len(df))):
@@ -445,10 +567,8 @@ def extract_pbp_blocks(filepath):
             res = clean_dataframe_times(res)
             return deduplicate_columns(res)
 
-        # 1. 抓取 Box Score（由第 0 欄開始）
         box_df = extract_horizontal_subtable(0)
 
-        # 2. 抓取 On/Off（定位第二個「球員名」所在欄位）
         onoff_c = None
         for c in range(5, len(row_headers)):
             if "On_ORtg" in row_headers[c] or "累計在場時間" in row_headers[c]:
@@ -464,7 +584,6 @@ def extract_pbp_blocks(filepath):
         if onoff_c is not None:
             blocks['on_off'] = extract_horizontal_subtable(onoff_c)
 
-        # 3. 抓取五人陣容（定位「五人陣容組合」所在欄位）
         lineup_c = None
         for c in range(5, len(row_headers)):
             if "五人陣容" in row_headers[c]:
@@ -473,7 +592,6 @@ def extract_pbp_blocks(filepath):
         if lineup_c is not None:
             blocks['lineup'] = extract_horizontal_subtable(lineup_c)
 
-        # 4. 抓取雙洋將化學效應（定位「洋將搭檔」或「雙洋將」所在欄位）
         duo_c = None
         for c in range(5, len(row_headers)):
             if "洋將搭檔" in row_headers[c] or "雙洋將" in row_headers[c]:
@@ -484,10 +602,9 @@ def extract_pbp_blocks(filepath):
 
     return blocks, box_df
 
-# ----------------- 取得球員母表數據 (優先讀取獨立總表，若無則自動從 7 隊即時聚合) -----------------
+# ----------------- 取得球員母表數據 -----------------
 @st.cache_data(ttl=300)
 def get_master_players(candidate_dirs):
-    # 1. 優先檢查是否已有獨立總表
     f_master = find_file_in_folders(candidate_dirs, "進階數據與戰力評級總表")
     if f_master:
         try:
@@ -509,7 +626,6 @@ def get_master_players(candidate_dirs):
         except Exception:
             pass
 
-    # 2. 若無獨立總表，自動掃描 7 隊專屬表並即時聚合《球員進階數據》
     all_team_dfs = []
     teams = ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
     for t_name in teams:
@@ -546,7 +662,7 @@ def get_master_players(candidate_dirs):
 
     return pd.DataFrame()
 
-# ----------------- 雷達圖能力值計算函式 (自適應場均得分與總得分) -----------------
+# ----------------- 雷達圖能力值計算函式 -----------------
 def calculate_radar_scores(row):
     pts = 0.0
     for pc in ['場均得分', 'PPG', '總得分', '得分', 'PTS']:
@@ -624,17 +740,18 @@ with sel_col1:
 active_dirs = stage_mapping[stage_selection]
 
 # =========================================================================
-# 頂部導航列 (Top Navigation Bar)
+# 頂部導航列 (Top Navigation Bar) - 6 大核心分頁
 # =========================================================================
 MENU_SUMMARY = "🏆 7隊戰力評級"
 MENU_SCATTER = "🎯 主力效率象限圖"
+MENU_GAME = "📅 逐場賽事覆盤"
 MENU_PBP = "⚡ 各隊 PBP 陣容與 On/Off"
 MENU_CARD = "🃏 球員戰力卡與對決"
 MENU_GLOSSARY = "📚 進階數據辭典"
 
 nav_selection = st.radio(
     "導航選單",
-    [MENU_SUMMARY, MENU_SCATTER, MENU_PBP, MENU_CARD, MENU_GLOSSARY],
+    [MENU_SUMMARY, MENU_SCATTER, MENU_GAME, MENU_PBP, MENU_CARD, MENU_GLOSSARY],
     horizontal=True,
     label_visibility="collapsed"
 )
@@ -653,7 +770,6 @@ if nav_selection == MENU_SUMMARY:
         st.markdown("#### 📊 團隊進階四要素指標 (Team Advanced Metrics)")
         if not block_a.empty:
             df_display = block_a.copy()
-            # 若有「戰績」欄位，提取勝場數計算勝率以利正確排序
             if '戰績' in df_display.columns:
                 def extract_win_pct(val):
                     val_str = str(val).strip()
@@ -703,7 +819,6 @@ elif nav_selection == MENU_SCATTER:
     df_players = get_master_players(active_dirs)
 
     if not df_players.empty and '球員名' in df_players.columns:
-        # 1. 智慧探測得分欄位
         pts_col = None
         for c in df_players.columns:
             if c in ['場均得分', 'PPG']:
@@ -713,7 +828,6 @@ elif nav_selection == MENU_SCATTER:
                 pts_col = c
                 break
 
-        # 2. 智慧探測身分欄位
         id_col = None
         for c in df_players.columns:
             if any(k in str(c) for k in ['身分', '本土', '洋將', '身份']):
@@ -726,12 +840,10 @@ elif nav_selection == MENU_SCATTER:
                 games_col = gc
                 break
 
-        # 數值型清理
         for col in [pts_col, games_col, 'USG%', 'TS%', 'GmSc', 'EFF']:
             if col and col in df_players.columns:
                 df_players[col] = pd.to_numeric(df_players[col].astype(str).str.replace('%', ''), errors='coerce').fillna(0.0)
 
-        # 3. 確保「場均得分」欄位絕對存在（徹底解決 KeyError）
         if pts_col in ['場均得分', 'PPG']:
             df_players['場均得分'] = pd.to_numeric(df_players[pts_col], errors='coerce').fillna(0.0).round(1)
         elif games_col and pts_col:
@@ -832,7 +944,157 @@ elif nav_selection == MENU_SCATTER:
         st.info("💡 尚未讀取到球員進階數據母表。")
 
 # =========================================================================
-# 分頁 3：各隊 PBP 陣容與 On/Off 深入分析
+# 分頁 3：單場賽事實況與進階數據覆盤 (全新核心功能)
+# =========================================================================
+elif nav_selection == MENU_GAME:
+    st.subheader(f"📅 {stage_selection} — 單場賽事實況與進階數據覆盤 (Game Breakdown)")
+    st.markdown("以官方逐球紀錄為基底，深度解析兩隊單場【進階四要素雙向對決】、【關鍵五人陣容】與【球員單場進階 Box Score】。")
+
+    sched_file = find_file_in_folders(active_dirs, "schedule.json")
+    schedule_data = []
+    if sched_file and os.path.exists(sched_file):
+        try:
+            with open(sched_file, "r", encoding="utf-8") as f_json:
+                schedule_data = json.load(f_json)
+        except Exception:
+            pass
+
+    if not schedule_data:
+        st.info(f"💡 {stage_selection} 暫無可用的賽程索引（請確認 `{active_dirs[0]}/schedule.json` 檔案存在且格式正確）。")
+    else:
+        game_labels = [
+            f"{g.get('game_id', '')} ｜ {g.get('date', '')} ｜ {g.get('away_team', '')} {g.get('away_score', '')} : {g.get('home_score', '')} {g.get('home_team', '')} ({g.get('status', 'FINAL')})"
+            for g in schedule_data
+        ]
+        
+        selected_game_label = st.selectbox("選擇要覆盤的比賽場次", game_labels, index=0)
+        selected_idx = game_labels.index(selected_game_label)
+        cur_game = schedule_data[selected_idx]
+        
+        away_team = cur_game.get('away_team', '')
+        home_team = cur_game.get('home_team', '')
+        away_score = int(cur_game.get('away_score', 0))
+        home_score = int(cur_game.get('home_score', 0))
+        sheet_name = cur_game.get('sheet_name', '')
+
+        color_away = "#00E676" if away_score > home_score else "#FFFFFF"
+        color_home = "#00E676" if home_score > away_score else "#FFFFFF"
+
+        # 頂部賽事記分板橫幅
+        st.markdown(f"""
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 20px 14px; margin: 12px 0 24px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; text-align: center;">
+                <div style="flex: 1.2;">
+                    <div style="color: #888; font-size: 0.88rem; margin-bottom: 2px;">客隊 (AWAY)</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: #EEE;">{away_team}</div>
+                    <div style="font-size: 2.8rem; font-weight: 900; color: {color_away}; line-height: 1.1;">{away_score}</div>
+                </div>
+                <div style="flex: 0.8; padding: 0 8px;">
+                    <div style="display: inline-block; background: rgba(0, 230, 118, 0.15); color: #00E676; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; margin-bottom: 6px;">{cur_game.get('status', 'FINAL')}</div>
+                    <div style="color: #FFF; font-size: 1.1rem; font-weight: 700; margin-bottom: 2px;">{cur_game.get('game_id')}</div>
+                    <div style="color: #888; font-size: 0.82rem;">{cur_game.get('date')} {cur_game.get('time', '')}</div>
+                </div>
+                <div style="flex: 1.2;">
+                    <div style="color: #888; font-size: 0.88rem; margin-bottom: 2px;">主隊 (HOME)</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: #EEE;">{home_team}</div>
+                    <div style="font-size: 2.8rem; font-weight: 900; color: {color_home}; line-height: 1.1;">{home_score}</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        away_file = find_team_file_in_folders(active_dirs, away_team)
+        home_file = find_team_file_in_folders(active_dirs, home_team)
+
+        box_away, onoff_away, lineup_away, stats_away = extract_single_game_data(away_file, sheet_name)
+        box_home, onoff_home, lineup_home, stats_home = extract_single_game_data(home_file, sheet_name)
+
+        if box_away.empty and box_home.empty:
+            st.warning(f"⚠️ 找不到該場次的工作表（請確認各隊 Excel 中是否包含名稱為 `{sheet_name}` 的工作表）。")
+        else:
+            fga_a, fta_a, oreb_a, dreb_a, tov_a, fgm_a, tpm_a, tpa_a = (
+                stats_away.get('投籃出手', 0), stats_away.get('罰球出手', 0), stats_away.get('進攻籃板', 0),
+                stats_away.get('防守籃板', 0), stats_away.get('失誤', 0), stats_away.get('投籃命中', 0),
+                stats_away.get('三分命中', 0), stats_away.get('三分出手', 0)
+            )
+            fga_h, fta_h, oreb_h, dreb_h, tov_h, fgm_h, tpm_h, tpa_h = (
+                stats_home.get('投籃出手', 0), stats_home.get('罰球出手', 0), stats_home.get('進攻籃板', 0),
+                stats_home.get('防守籃板', 0), stats_home.get('失誤', 0), stats_home.get('投籃命中', 0),
+                stats_home.get('三分命中', 0), stats_home.get('三分出手', 0)
+            )
+            
+            efg_a = (fgm_a + 0.5 * tpm_a) / fga_a if fga_a > 0 else 0.0
+            efg_h = (fgm_h + 0.5 * tpm_h) / fga_h if fga_h > 0 else 0.0
+            
+            poss_a = fga_a + 0.44 * fta_a - oreb_a + tov_a
+            poss_h = fga_h + 0.44 * fta_h - oreb_h + tov_h
+            poss_game = (poss_a + poss_h) / 2.0 if (poss_a + poss_h) > 0 else 100.0
+            
+            ortg_a = 100.0 * (away_score / poss_a) if poss_a > 0 else 0.0
+            ortg_h = 100.0 * (home_score / poss_h) if poss_h > 0 else 0.0
+            
+            tov_pct_a = (tov_a / (fga_a + 0.44 * fta_a + tov_a)) if (fga_a + 0.44 * fta_a + tov_a) > 0 else 0.0
+            tov_pct_h = (tov_h / (fga_h + 0.44 * fta_h + tov_h)) if (fga_h + 0.44 * fta_h + tov_h) > 0 else 0.0
+            
+            orb_pct_a = oreb_a / (oreb_a + dreb_h) if (oreb_a + dreb_h) > 0 else 0.0
+            orb_pct_h = oreb_h / (oreb_h + dreb_a) if (oreb_h + dreb_a) > 0 else 0.0
+            
+            tpar_a = tpa_a / fga_a if fga_a > 0 else 0.0
+            tpar_h = tpa_h / fga_h if fga_h > 0 else 0.0
+            ftr_a = fta_a / fga_a if fga_a > 0 else 0.0
+            ftr_h = fta_h / fga_h if fga_h > 0 else 0.0
+
+            st.markdown("#### ⚔️ 兩隊進階四要素與攻防效率雙向對決")
+            st.markdown(f'<div style="text-align: center; color: #888; margin-bottom: 10px;">【客隊】<span style="color: #00E676; font-weight: bold;">{away_team}</span> vs 【主隊】<span style="color: #00E676; font-weight: bold;">{home_team}</span></div>', unsafe_allow_html=True)
+
+            bars_html = "".join([
+                render_bi_bar("百回合進攻效率 (ORtg)", f"{ortg_a:.1f}", f"{ortg_h:.1f}", higher_is_better=True),
+                render_bi_bar("百回合防守效率 (DRtg)", f"{ortg_h:.1f}", f"{ortg_a:.1f}", higher_is_better=False),
+                render_bi_bar("真實進攻回合 (Poss)", f"{poss_a:.1f}", f"{poss_h:.1f}", higher_is_better=True),
+                render_bi_bar("有效命中率 (eFG%)", f"{efg_a*100:.1f}%", f"{efg_h*100:.1f}%", higher_is_better=True),
+                render_bi_bar("團隊失誤率 (TOV%)", f"{tov_pct_a*100:.1f}%", f"{tov_pct_h*100:.1f}%", higher_is_better=False),
+                render_bi_bar("進攻籃板爭搶率 (ORB%)", f"{orb_pct_a*100:.1f}%", f"{orb_pct_h*100:.1f}%", higher_is_better=True),
+                render_bi_bar("三分出手佔比 (3PAr)", f"{tpar_a*100:.1f}%", f"{tpar_h*100:.1f}%", higher_is_better=True),
+                render_bi_bar("買犯罰球比 (FTr)", f"{ftr_a*100:.1f}%", f"{ftr_h*100:.1f}%", higher_is_better=True),
+                render_bi_bar("投籃命中 (FGM/FGA)", f"{int(fgm_a)}/{int(fga_a)}", f"{int(fgm_h)}/{int(fga_h)}", higher_is_better=True),
+                render_bi_bar("三分命中 (3PM/3PA)", f"{int(tpm_a)}/{int(tpa_a)}", f"{int(tpm_h)}/{int(tpa_h)}", higher_is_better=True),
+                render_bi_bar("罰球命中 (FTM/FTA)", f"{int(stats_away.get('罰球命中', 0))}/{int(fta_a)}", f"{int(stats_home.get('罰球命中', 0))}/{int(fta_h)}", higher_is_better=True),
+            ])
+
+            st.markdown(f'<div style="background: rgba(255, 255, 255, 0.02); padding: 16px 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 24px;">{bars_html}</div>', unsafe_allow_html=True)
+
+            st.markdown("#### 🏆 單場關鍵五人陣容對抗 (Game Lineups)")
+            col_l_a, col_l_h = st.columns(2)
+            with col_l_a:
+                st.markdown(f"**客隊：{away_team} 主要陣容**")
+                if not lineup_away.empty:
+                    st.dataframe(lineup_away, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"💡 {away_team} 本場暫無五人陣容細部統計。")
+
+            with col_l_h:
+                st.markdown(f"**主隊：{home_team} 主要陣容**")
+                if not lineup_home.empty:
+                    st.dataframe(lineup_home, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"💡 {home_team} 本場暫無五人陣容細部統計。")
+
+            st.markdown("#### 📋 兩隊球員單場攻守數據 (Single-Game Box Score)")
+            tab_box_a, tab_box_h = st.tabs([f"🏀 {away_team} 球員單場攻守", f"🏀 {home_team} 球員單場攻守"])
+            with tab_box_a:
+                if not box_away.empty:
+                    st.dataframe(box_away, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"💡 {away_team} 本場球員攻守數據載入失敗。")
+
+            with tab_box_h:
+                if not box_home.empty:
+                    st.dataframe(box_home, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"💡 {home_team} 本場球員攻守數據載入失敗。")
+
+# =========================================================================
+# 分頁 4：各隊 PBP 陣容與 On/Off 深入分析
 # =========================================================================
 elif nav_selection == MENU_PBP:
     st.subheader(f"⚡ {stage_selection} — 各隊 Play-by-Play 陣容組合與主力 On/Off 淨勝分")
@@ -863,7 +1125,6 @@ elif nav_selection == MENU_PBP:
             df_duo = blocks['duo'].copy()
             headers = list(df_duo.columns)
             
-            # 自適應原生表格：前段數據緊湊貼合 (width: 1%)，後段建議自動展開鋪滿
             html = [
                 '<div style="overflow-x: auto; width: 100%; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 20px;">',
                 '<table style="width: 100%; border-collapse: collapse; font-size: 0.95rem; background-color: rgba(255,255,255,0.02); text-align: left;">',
@@ -903,7 +1164,7 @@ elif nav_selection == MENU_PBP:
         st.warning(f"⚠️ 找不到 {selected_team} 的專屬數據檔案。")
 
 # =========================================================================
-# 分頁 4：球員戰力卡與雙人對決
+# 分頁 5：球員戰力卡與雙人對決
 # =========================================================================
 elif nav_selection == MENU_CARD:
     st.subheader(f"🃏 {stage_selection} — 球員戰力卡與雙雄對決 (Player Card & Head-to-Head)")
@@ -951,7 +1212,6 @@ elif nav_selection == MENU_CARD:
             st.divider()
             card_col1, card_col2, card_col3, card_col4 = st.columns(4)
             
-            # 計算場均與總累計
             games_cnt = float(pd.to_numeric(str(p1_row.get('出賽', p1_row.get('場次', 1))), errors='coerce') or 1.0)
             games_cnt = 1.0 if games_cnt <= 0 else games_cnt
             
@@ -1131,7 +1391,7 @@ elif nav_selection == MENU_CARD:
         st.info("💡 尚未讀取到球員數據母表。")
 
 # =========================================================================
-# 分頁 5：進階數據辭典與公式附錄
+# 分頁 6：進階數據辭典與公式附錄
 # =========================================================================
 elif nav_selection == MENU_GLOSSARY:
     st.subheader("📚 TPBL 進階數據辭典與公式附錄 (Glossary & Formulas)")

@@ -683,21 +683,36 @@ elif nav_selection == MENU_SCATTER:
     df_players = get_master_players(active_dirs)
 
     if not df_players.empty and '球員名' in df_players.columns:
-        pts_col = '總得分' if '總得分' in df_players.columns else ('得分' if '得分' in df_players.columns else None)
+        # 1. 智慧探測得分欄位 (相容「場均得分」、「總得分」、「得分」)
+        pts_col = None
+        for c in df_players.columns:
+            if c in ['場均得分', '總得分', '得分', 'PTS']:
+                pts_col = c
+                break
+        
+        # 2. 智慧探測身分欄位 (相容「本土/洋將」、「身分」)
+        id_col = None
+        for c in df_players.columns:
+            if any(k in str(c) for k in ['身分', '本土', '洋將']):
+                id_col = c
+                break
+
         games_col = '出賽' if '出賽' in df_players.columns else ('場次' if '場次' in df_players.columns else None)
         
         for col in [pts_col, games_col, 'USG%', 'TS%', 'GmSc', 'EFF']:
             if col and col in df_players.columns:
                 df_players[col] = pd.to_numeric(df_players[col].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
 
-        # 計算場均得分 (PPG)，若無出賽場次則 fallback 回原始得分
-        if games_col and pts_col:
+        # 3. 計算場均得分 (若已有「場均得分」則直接取用，若為「總得分」則除以場次)
+        if pts_col == '場均得分':
+            df_players['計算場均'] = df_players['場均得分']
+        elif games_col and pts_col:
             df_players['出賽數'] = df_players[games_col].replace(0, 1)
-            df_players['場均得分'] = (df_players[pts_col] / df_players['出賽數']).round(1)
+            df_players['計算場均'] = (df_players[pts_col] / df_players['出賽數']).round(1)
         elif pts_col:
-            df_players['場均得分'] = df_players[pts_col]
+            df_players['計算場均'] = df_players[pts_col]
         else:
-            df_players['場均得分'] = 0.0
+            df_players['計算場均'] = 0.0
 
         if 'USG%' in df_players.columns and df_players['USG%'].mean() > 0 and df_players['USG%'].mean() < 1.0:
             df_players['USG%'] = df_players['USG%'] * 100.0
@@ -706,12 +721,15 @@ elif nav_selection == MENU_SCATTER:
 
         c1, c2 = st.columns(2)
         with c1:
-            # 改為場均得分 (PPG) 滑桿，預設 8.0 分，間隔 0.5 分
             min_ppg = st.slider("最低場均得分篩選 (PPG)", min_value=0.0, max_value=30.0, value=8.0, step=0.5)
         with c2:
-            id_col = '本土/洋將' if '本土/洋將' in df_players.columns else None
             id_options = ["全部"] + list(df_players[id_col].dropna().unique()) if id_col else ["全部"]
             selected_id = st.multiselect("球員身分篩選", id_options, default=["全部"])
+
+        filtered = df_players.copy()
+        filtered = filtered[filtered['計算場均'] >= min_ppg]
+        if id_col and "全部" not in selected_id:
+            filtered = filtered[filtered[id_col].isin(selected_id)]
 
         filtered = df_players.copy()
         filtered = filtered[filtered['場均得分'] >= min_ppg]

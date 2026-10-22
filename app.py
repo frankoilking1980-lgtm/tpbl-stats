@@ -20,24 +20,20 @@ st.set_page_config(
 # ----------------- 頂部導航與主題基礎 CSS -----------------
 base_style = """
 <style>
-/* 1. 徹底隱藏原生 Header、工具列、頁尾與嵌入白條 */
 header, [data-testid="stHeader"] {display: none !important;}
 [data-testid="stToolbar"] {display: none !important;}
 [data-testid="stDecoration"] {display: none !important;}
 footer, [data-testid="stEmbedFooter"] {display: none !important;}
 div[class*="viewerBadge"] {display: none !important;}
 
-/* 2. 徹底關閉左側邊欄，釋放 100% 畫面空間 */
 [data-testid="stSidebar"] {display: none !important;}
 [data-testid="stSidebarCollapseButton"] {display: none !important;}
 [data-testid="collapsedControl"] {display: none !important;}
 
-/* 3. 隱藏 st.radio 頂部的提示標題 */
 div[data-testid="stRadio"] label[data-testid="stWidgetLabel"] {
     display: none !important;
 }
 
-/* 4. 通用：滑鼠懸停與選中高亮效果 */
 div[data-testid="stRadio"] label[data-baseweb="radio"]:hover {
     background-color: rgba(0, 230, 118, 0.15) !important;
     border-color: #00E676 !important;
@@ -83,28 +79,15 @@ is_light = (theme_choice == "☀️ 淺色")
 plotly_template = "plotly_white" if is_light else "plotly_dark"
 active_dirs = stage_mapping[stage_selection]
 
-# ----------------- 動態外觀主題樣式注入 (Dark / Light Mode) -----------------
+# ----------------- 動態外觀主題樣式注入 -----------------
 if is_light:
     theme_css = """
     <style>
-    .stApp {
-        background-color: #F8F9FA !important;
-        color: #1A1A1A !important;
-    }
-    h1, h2, h3, h4, h5, h6, p, span, label {
-        color: #1A1A1A !important;
-    }
-    div[data-testid="stRadio"] > div {
-        background: rgba(0, 0, 0, 0.04) !important;
-        border: 1px solid rgba(0, 0, 0, 0.1) !important;
-    }
-    div[data-testid="stRadio"] label[data-baseweb="radio"] {
-        background-color: rgba(0, 0, 0, 0.03) !important;
-        border: 1px solid rgba(0, 0, 0, 0.08) !important;
-    }
-    div[data-testid="stRadio"] label[data-baseweb="radio"] p {
-        color: #333333 !important;
-    }
+    .stApp { background-color: #F8F9FA !important; color: #1A1A1A !important; }
+    h1, h2, h3, h4, h5, h6, p, span, label { color: #1A1A1A !important; }
+    div[data-testid="stRadio"] > div { background: rgba(0, 0, 0, 0.04) !important; border: 1px solid rgba(0, 0, 0, 0.1) !important; }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] { background-color: rgba(0, 0, 0, 0.03) !important; border: 1px solid rgba(0, 0, 0, 0.08) !important; }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] p { color: #333333 !important; }
     @media (min-width: 768px) {
         div[data-testid="stRadio"] { width: 100% !important; }
         div[data-testid="stRadio"] div[role="radiogroup"] {
@@ -136,24 +119,11 @@ if is_light:
 else:
     theme_css = """
     <style>
-    .stApp {
-        background-color: #0E1117 !important;
-        color: #FFFFFF !important;
-    }
-    h1, h2, h3, h4, h5, h6, p, span, label {
-        color: #FFFFFF !important;
-    }
-    div[data-testid="stRadio"] > div {
-        background: rgba(255, 255, 255, 0.03) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    }
-    div[data-testid="stRadio"] label[data-baseweb="radio"] {
-        background-color: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    }
-    div[data-testid="stRadio"] label[data-baseweb="radio"] p {
-        color: #FFFFFF !important;
-    }
+    .stApp { background-color: #0E1117 !important; color: #FFFFFF !important; }
+    h1, h2, h3, h4, h5, h6, p, span, label { color: #FFFFFF !important; }
+    div[data-testid="stRadio"] > div { background: rgba(255, 255, 255, 0.03) !important; border: 1px solid rgba(255, 255, 255, 0.08) !important; }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] { background-color: rgba(255, 255, 255, 0.05) !important; border: 1px solid rgba(255, 255, 255, 0.08) !important; }
+    div[data-testid="stRadio"] label[data-baseweb="radio"] p { color: #FFFFFF !important; }
     @media (min-width: 768px) {
         div[data-testid="stRadio"] { width: 100% !important; }
         div[data-testid="stRadio"] div[role="radiogroup"] {
@@ -184,7 +154,7 @@ else:
     """
 st.markdown(theme_css, unsafe_allow_html=True)
 
-# ----------------- 時間與數值格式化工具函式 -----------------
+# ----------------- 工具函式 -----------------
 def clean_time_display(val):
     if pd.isna(val):
         return ""
@@ -273,7 +243,6 @@ def deduplicate_columns(df):
     df.columns = new_cols
     return df
 
-# ----------------- 支援資料夾分流的智慧找檔函式 -----------------
 def find_file_in_folders(candidate_dirs, keyword):
     keyword_clean = keyword.lower().strip()
     for d in candidate_dirs:
@@ -303,18 +272,16 @@ def find_team_file_in_folders(candidate_dirs, team_name):
                     return os.path.join(d, fname)
     return None
 
-# ----------------- 球隊代表色配置 -----------------
 team_color_map = {
-    "新北國王": "#FFC107",       # 金黃
-    "福爾摩沙夢想家": "#00E676",   # 亮綠
-    "高雄全家海神": "#00B0FF",     # 水藍
-    "新北中信特攻": "#FFD600",     # 閃電黃
-    "臺北台新戰神": "#FF5252",     # 戰神紅
-    "桃園台啤永豐雲豹": "#AB47BC", # 紫金
-    "新竹御嵿攻城獅": "#EA80FC"    # 紫色
+    "新北國王": "#FFC107",
+    "福爾摩沙夢想家": "#00E676",
+    "高雄全家海神": "#00B0FF",
+    "新北中信特攻": "#FFD600",
+    "臺北台新戰神": "#FF5252",
+    "桃園台啤永豐雲豹": "#AB47BC",
+    "新竹御嵿攻城獅": "#EA80FC"
 }
 
-# ----------------- 單場對決雙向長條圖組件 -----------------
 def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True):
     def parse_stat(v):
         s = str(v).strip().replace('%', '').replace('+', '')
@@ -351,7 +318,6 @@ def render_bi_bar(label, val_away, val_home, is_pct=False, higher_is_better=True
     
     return f'<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem;"><div style="width: 16%; text-align: right; font-weight: 700; color: {color_a}; font-size: 1.05rem;">{disp_a}</div><div style="width: 26%; display: flex; justify-content: flex-end; padding-right: 8px;"><div style="width: {pct_a:.1f}%; background: {color_a}; height: 8px; border-radius: 4px;"></div></div><div style="width: 32%; text-align: center; color: {label_c}; font-weight: 600; white-space: nowrap; font-size: 0.9rem;">{label}</div><div style="width: 26%; display: flex; justify-content: flex-start; padding-left: 8px;"><div style="width: {pct_h:.1f}%; background: {color_h}; height: 8px; border-radius: 4px;"></div></div><div style="width: 16%; text-align: left; font-weight: 700; color: {color_h}; font-size: 1.05rem;">{disp_h}</div></div>'
 
-# ----------------- 分離五人陣容與核心搭檔表格 -----------------
 def split_lineup_and_pairs(df_lineup):
     if df_lineup is None or df_lineup.empty:
         return pd.DataFrame(), pd.DataFrame()
@@ -377,7 +343,7 @@ def split_lineup_and_pairs(df_lineup):
 # ----------------- 精確單場工作表抽取器 (五重精準防禦：杜絕 G01/G02 串場錯誤) -----------------
 def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
     if not filepath or not os.path.exists(filepath):
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
     try:
         xls = pd.ExcelFile(filepath)
         all_sheets = xls.sheet_names
@@ -425,7 +391,7 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
                     break
 
         if not matched_sheet:
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
 
         df = pd.read_excel(filepath, sheet_name=matched_sheet, header=None)
         
@@ -437,7 +403,7 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
                 break
                 
         if header_r is None:
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, matched_sheet
 
         # 1. Box score
         box_cols = []
@@ -454,7 +420,6 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
             p_name = df.iloc[r, 1] if len(df.columns) > 1 else None
             if pd.isna(p_name) or str(p_name).strip() == "" or str(p_name) == "nan":
                 break
-            # 排除合計或團隊行
             if any(k in str(p_name) for k in ['合計', '總計', 'TEAM', '團隊', 'Team']):
                 continue
             box_rows.append([df.iloc[r, ci] for ci in box_col_idxs])
@@ -499,7 +464,7 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
         onoff_df = extract_sub(onoff_c) if onoff_c else pd.DataFrame()
         lineup_df = extract_sub(lineup_c) if lineup_c else pd.DataFrame()
 
-        # 3. 累加團隊統計 (支援中文與英文標準欄位別名)
+        # 3. 累加團隊統計
         team_stats = {}
         alias_map = {
             '得分': ['得分', '總得分', 'PTS'],
@@ -526,9 +491,9 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
             else:
                 team_stats[stat_key] = 0.0
 
-        return box_df, onoff_df, lineup_df, team_stats
+        return box_df, onoff_df, lineup_df, team_stats, matched_sheet
     except Exception:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
 
 # ----------------- 總表拆解解析 -----------------
 def parse_summary_sheet(filepath):
@@ -1124,7 +1089,7 @@ elif nav_selection == MENU_GAME:
         text_title_c = "#111" if is_light else "#EEE"
         text_sub_c = "#777" if is_light else "#888"
 
-        # 頂部賽事記分板橫幅 (中間 G01 / FINAL / 日期 加大加粗排版)
+        # 頂部賽事記分板橫幅
         st.markdown(f"""
         <div style="background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; padding: 22px 16px; margin: 12px 0 24px 0;">
             <div style="display: flex; justify-content: space-between; align-items: center; text-align: center;">
@@ -1150,13 +1115,16 @@ elif nav_selection == MENU_GAME:
         away_file = find_team_file_in_folders(active_dirs, away_team)
         home_file = find_team_file_in_folders(active_dirs, home_team)
 
-        # 傳入 game_id 與 date 實施雙重精確鎖定，杜絕跨場次誤抓
-        box_away, onoff_away, lineup_away, stats_away = extract_single_game_data(away_file, sheet_name, cur_game_id, cur_game_date)
-        box_home, onoff_home, lineup_home, stats_home = extract_single_game_data(home_file, sheet_name, cur_game_id, cur_game_date)
+        # 雙重強鎖定抽取（回傳實際命中的工作表名稱以利除錯與核實）
+        box_away, onoff_away, lineup_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, sheet_name, cur_game_id, cur_game_date)
+        box_home, onoff_home, lineup_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, sheet_name, cur_game_id, cur_game_date)
 
         if box_away.empty and box_home.empty:
             st.warning(f"⚠️ 找不到該場次的工作表（請確認各隊 Excel 中是否包含名稱為 `{sheet_name}` 的工作表）。")
         else:
+            # 顯示實際讀取來源工作表名稱，透明核對
+            st.caption(f"🔍 數據來源工作表核對 ｜ 客隊：`{matched_away_sheet}` ｜ 主隊：`{matched_home_sheet}`")
+
             fga_a, fta_a, oreb_a, dreb_a, tov_a, fgm_a, tpm_a, tpa_a = (
                 stats_away.get('投籃出手', 0), stats_away.get('罰球出手', 0), stats_away.get('進攻籃板', 0),
                 stats_away.get('防守籃板', 0), stats_away.get('失誤', 0), stats_away.get('投籃命中', 0),
@@ -1191,7 +1159,7 @@ elif nav_selection == MENU_GAME:
 
             st.markdown("#### ⚔️ 兩隊進階四要素與攻防效率雙向對決")
             
-            # 精準對齊的雙隊名稱橫幅 (客隊靠右對齊 42% 數據端點，主隊靠左對齊 42% 數據端點)
+            # 精準對齊雙隊名稱橫幅
             st.markdown(f"""
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0 16px 0; border-bottom: 2px solid {card_border}; margin-bottom: 18px;">
                 <div style="width: 42%; text-align: right; padding-right: 14px;">
@@ -1246,7 +1214,7 @@ elif nav_selection == MENU_GAME:
                 else:
                     st.info(f"💡 {home_team} 本場暫無五人陣容細部統計。")
 
-            # 模組 2：單場核心雙人搭檔效益 (獨立單獨一個表)
+            # 模組 2：單場核心雙人搭檔效益
             if not pairs_away.empty or not pairs_home.empty:
                 st.markdown("#### 🤝 單場核心雙人搭檔效益 (Key Pairs Chemistry)")
                 col_p_a, col_p_h = st.columns(2)
@@ -1262,9 +1230,9 @@ elif nav_selection == MENU_GAME:
                     if not pairs_home.empty:
                         st.dataframe(pairs_home, use_container_width=True, hide_index=True)
                     else:
-                        st.info(f"💡 {home_team} 本場暫無雙人搭檔統計。")
+                        st.info(f"💡 {home_team} 本場暫重雙人搭檔統計。")
 
-            # 模組 3：兩隊球員單場攻守數據 (凍結「球員名」與「背號」欄位，滑動不跑版)
+            # 模組 3：兩隊球員單場攻守數據 (固定「球員名」與「背號」欄位)
             st.markdown("#### 📋 兩隊球員單場進階攻守數據 (Single-Game Box Score)")
             pinned_box_config = {
                 "背號": st.column_config.TextColumn("背號", pinned=True),

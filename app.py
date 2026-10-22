@@ -1079,7 +1079,7 @@ elif nav_selection == MENU_GAME:
             pass
 
     if not schedule_data:
-        st.info(f"💡 {stage_selection} 暫無可用的賽程索引（請確認 `{active_dirs[0]}/schedule.json` 檔案存在且格式正確）。")
+        st.info(f"💡 {stage_selection} 暫無可用的賽程索引。")
     else:
         game_labels = [
             f"{g.get('game_id', '')} ｜ {g.get('date', '')} ｜ {g.get('away_team', '')} {g.get('away_score', '')} : {g.get('home_score', '')} {g.get('home_team', '')} ({g.get('status', 'FINAL')})"

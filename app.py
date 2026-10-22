@@ -482,17 +482,17 @@ st.markdown(
 )
 
 # =========================================================================
-# 賽季階段切換開關 (Season Stage Selector)
+# 賽季階段切換開關 (Season Stage Selector) - 靠左對齊
 # =========================================================================
-stage_col1, stage_col2, stage_col3 = st.columns([1, 2, 1])
-with stage_col2:
+stage_col1, _ = st.columns([1.2, 2])
+with stage_col1:
     stage_selection = st.radio(
         "選擇賽季階段",
         ["🏆 2026-2027 例行賽", "🔥 2026-2027 季前熱身賽"],
         horizontal=True,
         label_visibility="collapsed"
     )
-
+    
 # 依選擇設定資料夾搜尋優先順序 (支援子資料夾與根目錄 fallback)
 if stage_selection == "🏆 2026-2027 例行賽":
     active_dirs = ["data/season2026", "season2026", "."]

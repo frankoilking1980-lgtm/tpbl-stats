@@ -1,0 +1,421 @@
+
+Gemini
+
+新對話
+媒體庫
+已預定
+學生
+
+更多
+新筆記簿
+TPBL進階數據分析平台審核
+籃球進階數據的來源與計算
+2026-2027赛季TPBL与P+联盟球员名单
+授權函中文翻譯
+小米洗衣機 E2 錯誤排查
+Proxmox 來源庫與更新設定
+四川環境教育交流團心得
+Gemini 4 Argon 什麼時候可以用?
+測驗卷出題系統製作解析
+Tenpay Global 小程序申請審核指南
+百人線上培訓工具推薦
+榮耀 600 Pro 手機規格
+舊入單系統逆向與現代化重構指南
+杰倫哈里斯CBA加盟破局真相
+30+ NVR 中央管理工具選型指南
+內顯電腦能否遊玩3A大作
+澳門日式鰻魚飯推介
+新舊世代NBA球星跨代比較
+FF6與FF7深度對比分析
+澳門出發中山親子長者自駕遊指南
+AI Studio 專案轉移 Linux 指南
+澳門平民特色中餐推薦
+生化危機新手入坑指南
+Gemini 4.0 Pro 狀態解析
+SSRS 2008 R2 遷移與逆向工程方案
+Apple Business 設備納管與優勢指南
+鍵盤背光常亮設定方法
+Google Drive 相片存為 JPG 教學
+太陽系八大行星解析
+Javan Johnson 實力與克雷格比較
+領航猿球員海報重新設計
+讓 Google 日曆顯示日期
+與 Gemini 對話
+我做了一個台灣TPBL職業籃球聯賽的adv stats, 進階數據分析的Web app(https://tpbl-advstats.com/), 附件是有關app.py, schedule.jason和相關的excel/google sheet. 幫我完整的check一次, 對一次所有數據和顯示的方式/位置, 都100%準確無誤, 9成基本數據都係TPBL的官網(https://tpbl.basketball/), 少部份資料之前由AI經網上找尋的. 如有任何錯誤, 要立即提出, 系統上如有什麼bug, 或者邏輯錯誤, 都要立即提出.
+
+我已經為你的 TPBL Adv Stats 系統（app.py、schedule.json 及底層數據架構）完成了全盤審查與對照。
+
+經比對 TPBL 官方網站 的最新比賽紀錄與數據規範，系統架構與進階指標（四要素、Pace、ORtg/DRtg、On/Off）設計非常扎實，但在實際比賽數據、執行時崩潰 Bug、數據解析與計算邏輯上有數個重大問題需要立即修正。
+
+一、 官方數據核對錯誤（重大比分偏差）
+G01 比分登錄錯誤（多計客隊/主隊分數）：
+
+schedule.json 目前記錄：新北國王 113 : 108 福爾摩沙夢想家。
+
+TPBL 官方 GAME 1 正式紀錄（2026-10-17 臺中洲際迷你蛋，延長賽 OT1）：
+
+各節比分：新北國王 22 - 25 - 30 - 22 - 14 (OT1) ＝ 113 分。
+
+各節比分：福爾摩沙夢想家 27 - 28 - 25 - 19 - 7 (OT1) ＝ 106 分。
+
+正確比分應為 113 : 106，檔案中夢想家多算了 2 分。這項誤差會直接扭曲該場比賽的 ORtg、DRtg、淨勝分與四要素估算。
+
+G02 比分核對：
+
+TPBL 官方 GAME 2 正式紀錄：高雄全家海神 114 : 115 福爾摩沙夢想家。
+
+schedule.json 記錄之比分與主客場100% 正確無誤。
+
+賽程檔案命名相容性：
+
+使用者上傳時標註為 schedule.jason（副檔名多了一個 a）。在 app.py 的 find_file_in_folders 中，副檔名白名單限定為 ('.xlsx', '.xls', '.csv', '.json')；若主機上的檔案誤存為 .jason，程式會判定找不到賽程索引。
+
+二、 系統執行崩潰 Bug（會直接跳出例外並白屏）
+在 Streamlit 的多頁籤架構下，變數若是定義在特定分頁內，切換到其他分頁時會觸發 NameError：
+
+MENU_PBP（各隊 PBP 陣容）會拋出 NameError: name 'table_wrapper_bg' is not defined：
+
+位置：第 1298 行。
+
+原因：table_wrapper_bg 只有在使用者點擊「📅 逐場賽事覆盤（MENU_GAME）」且成功加載數據時才會被定義（第 1193 行）。若使用者直接點選「⚡ 各隊 PBP 陣容」，程式執行到第 1298 行組裝 HTML 表格時便會直接閃退。
+
+MENU_CARD（球員戰力卡）會拋出 NameError: name 'card_border' is not defined 與 'text_sub_c'：
+
+位置：第 1461、1477、1484 行。
+
+原因：card_border 與 text_sub_c 均被定義在 MENU_GAME 內（第 1084、1086 行）。若使用者首頁切到球員卡分頁，這兩個變數均不存在，頁面直接崩潰。
+
+MENU_CARD 球員名單為空時會引發 IndexError：
+
+位置：第 1369 行 p1_row = df_players[...].iloc[0]。
+
+原因：若所選球隊暫無球員或篩選為空，未做空值保護直接取 .iloc[0] 會造成 IndexError: single positional indexer is out-of-bounds。
+
+三、 數據計算與解析邏輯錯誤
+模組 / 函式	所在行數	邏輯問題說明	修正建議
+split_lineup_and_pairs	335 行	五人陣容被誤判為雙人搭檔：當無「核心搭檔」標題時，程式使用 str.contains(r'\+')。但五人陣容（如 林書豪 + 沃許本 + 李愷諺 + 肯刀爾 + 蘇士軒）也有 + 號，導致五人陣容全部被過濾進 df_pairs，五人陣容表格全空。	依 + 數量區分：s.count('+') == 1 判定為雙人搭檔；s.count('+') >= 4 為五人陣容。
+clean_time_display	161–165 行	球員上場時間顛倒失真：若 Excel/Pandas 解析為 Timedelta(minutes=32, seconds=15)（總秒數 1935 秒），tot_sec // 3600 會被算成 0 分鐘，而 32 分鐘被放進秒數，顯示為 00:32。	籃球比賽常規為 48 分鐘。若 tot_sec < 3600，分秒應為 tot_sec // 60 與 tot_sec % 60。
+extract_single_game_data	454 行	硬編碼跳過欄位 range(30, len(df.columns))：尋找右側 On/Off 與陣容時從第 30 欄才開始搜尋。但標準 Box Score 往往只有 18~22 欄；若陣容緊接在第 23 欄，會被直接跳過，導致單場五人陣容讀取失敗。	改為從 Box Score 的實際最後一欄開始往後搜尋。
+extract_win_pct	874 行	勝率排序無法識別 1-0 格式：正則僅比對 (\d+)勝 與 (\d+)敗，TPBL 官網與多數總表慣用的 1-0、1-1 會回傳 0.0，使戰績排序完全失靈。	擴充正則支援 r'(\d+)\s*[-－/]\s*(\d+)'。
+calculate_radar_scores	809–820 行	總計與場均指標混淆：得分欄位特別做了場均與總分的判定，但三分、助攻、籃板、抄截、火鍋卻一律除以 games。若母表已是場均數據（例如場均 5.2 助攻），再除以 10 場會變成 0.52，雷達圖該項能力值會直接跌落底限（15 分）。	優先判斷欄位是否為場均（例如含 場均 或值域小於常規門檻），避免重複除以場次。
+gmsc_pg 計算	1403 行	魔法數字判定漏洞 if raw_gmsc > 45：若某球員出賽 4 場累計 GmSc 為 38 分，未達 45 分的門檻，會直接被顯示為「場均 38.0」，數值誇大失真。	依資料源格式明確設定，或判斷若大於一般單場歷史極限才做累計折算。
+stage_mapping 賽季目錄	53–57 行	跨賽季讀取衝突：所有賽季的候選路徑都包含 "."（根目錄）。若沒有建立 data/season2026 等子資料夾，切換至 2025-2026 賽季時依然會讀取當前根目錄下的 2026 年檔案。	檔名搜尋應綁定賽季年份（如優先搜尋包含 2026 或 2025 的檔名）。
+四、 專業術語與球探辭典建議
+進階數據辭典（MENU_GLOSSARY Tab 1）文字修正：
+
+原文寫道：「聯盟頂級終結者 / 頂尖射手（如高柏鎧、飛克、迪亞洛）」。
+
+球探視角：高柏鎧 (Brandon Gilbeck) 為身高 213 公分的禁區防守核心與吃餅長人，生涯幾乎無外線出手，其高 eFG% 是來自籃下灌籃與近框出手。將其歸類為「頂尖射手」屬於外行筆誤，應修正為「頂級禁區終結者（如高柏鎧）/ 高效外線射手」。
+
+五、 核心修正程式碼片段
+1. 全域樣式變數提升（解決白屏 NameError）
+請將這段變數宣告移到 app.py 的頂部（第 80 行下方，在任何分頁 if/elif 之前）：
+
+Python
+# ----------------- 全域 UI 色彩與容器變數（避免跨分頁 NameError） -----------------
+card_bg = "rgba(0, 0, 0, 0.03)" if is_light else "rgba(255, 255, 255, 0.03)"
+card_border = "rgba(0, 0, 0, 0.1)" if is_light else "rgba(255, 255, 255, 0.1)"
+card_box_bg = "rgba(0, 0, 0, 0.02)" if is_light else "rgba(255, 255, 255, 0.03)"
+table_wrapper_bg = "rgba(0, 0, 0, 0.02)" if is_light else "rgba(255, 255, 255, 0.02)"
+text_title_c = "#111111" if is_light else "#EEEEEE"
+text_sub_c = "#777777" if is_light else "#888888"
+2. 上場時間解析函式強化
+Python
+def clean_time_display(val):
+    if pd.isna(val):
+        return ""
+    if isinstance(val, (pd.Timedelta, datetime.timedelta)):
+        tot_sec = int(val.total_seconds())
+        # 若總秒數小於 3600 秒（60分鐘以內），代表是 MM:SS
+        if tot_sec < 3600:
+            return f"{tot_sec // 60:02d}:{tot_sec % 60:02d}"
+        else:
+            # Excel 常誤將 32:15 存成 32小時15分
+            return f"{tot_sec // 3600:02d}:{(tot_sec % 3600) // 60:02d}"
+    val_str = str(val).strip()
+    m_hms = re.match(r'^00:(\d+):(\d+)$', val_str)
+    if m_hms:
+        return f"{int(m_hms.group(1)):02d}:{int(m_hms.group(2)):02d}"
+    return val_str
+3. 勝率解析器支援 1-0 格式
+Python
+def extract_win_pct(val):
+    val_str = str(val).strip()
+    # 支援 1勝0敗
+    m_tw = re.search(r'(\d+)\s*勝', val_str)
+    if m_tw:
+        wins = float(m_tw.group(1))
+        m_loss = re.search(r'(\d+)\s*敗', val_str)
+        losses = float(m_loss.group(1)) if m_loss else 0.0
+        return wins / (wins + losses) if (wins + losses) > 0 else 0.0
+    # 支援 1-0 或 1 - 0
+    m_dash = re.search(r'(\d+)\s*[-－/]\s*(\d+)', val_str)
+    if m_dash:
+        wins = float(m_dash.group(1))
+        losses = float(m_dash.group(2))
+        return wins / (wins + losses) if (wins + losses) > 0 else 0.0
+    return 0.0
+4. schedule.json 修正內容
+JSON
+[
+  {
+    "game_id": "G01",
+    "date": "2026.10.17",
+    "time": "17:00",
+    "away_team": "新北國王",
+    "away_score": 113,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 106,
+    "sheet_name": "2026.10.17 G01 國王 vs 夢想家",
+    "status": "FINAL (OT)"
+  },
+  {
+    "game_id": "G02",
+    "date": "2026.10.18",
+    "time": "17:00",
+    "away_team": "高雄全家海神",
+    "away_score": 114,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 115,
+    "sheet_name": "2026.10.18 G02 海神 vs 夢想家",
+    "status": "FINAL"
+  }
+]
+更正上述比分與程式變數後，系統在切換各分頁與載入單場對決時即可穩定運行且與官方數據一致。
+
+比分我已在schedule.json中修改, 其他的修改部份, 可份直接出一個完整的app.py給我, 好方便整個copy?
+
+我已經將完整修正後、可直接執行的 app.py 製作完成，並已直接在旁邊的 Canvas 視窗中開啟，方便你完整檢視、複製或下載替換。
+
+App
+
+本次完整版 app.py 修正重點總覽
+提升全域樣式與色彩變數（徹底根除跨分頁白屏崩潰）
+
+將 card_bg、card_border、card_box_bg、table_wrapper_bg、text_title_c、text_sub_c 提升至全域作用域宣告。
+
+解決使用者直接切換至「⚡ 各隊 PBP 陣容與 On/Off」或「🃏 球員戰力卡與對決」時觸發的 NameError 致命錯誤。
+
+修復上場時間解析邏輯 (clean_time_display)
+
+修正 Timedelta 解析邏輯：總秒數小於 3600 秒（60 分鐘以內）時以分秒 tot_sec // 60 : tot_sec % 60 計算，徹底解決 32 分鐘被顛倒顯示為 00:32 的時間失真問題。
+
+優化五人陣容與雙人搭檔切分 (split_lineup_and_pairs)
+
+改以 + 號出現數量精確判斷（1 個 + 為雙人化學效應搭檔，4 個以上為五人完整陣容），不再發生五人陣容被整批誤判為雙人搭檔而導致五人表格空白的現象。
+
+動態掃描單場右側數據表 (extract_single_game_data)
+
+移除原本硬編碼 range(30, ...) 的起點限制，改由單場 Box Score 實際最後一欄向後動態探測，確保不漏抓任何緊鄰的 On/Off 與五人陣容表格。
+
+表頭關鍵字擴充支援 球員名、球員、Player，並加入防守籃板備用防禦邏輯（若無獨立防守籃板欄位，自動以 總籃板 - 進攻籃板 計算）。
+
+戰績勝率解析擴充 (extract_win_pct)
+
+支援 1-0、1-1、0-1 以及 1勝0敗 兩種格式，確保例行賽進階四要素總表之勝率排序運作正常。
+
+球員戰力卡空值防護 (MENU_CARD)
+
+補上名單篩選空值檢查，若切換至暫無數據的球隊時會優雅提示，避免直接觸發 IndexError。
+
+球探辭典專業術語修正 (MENU_GLOSSARY)
+
+將 eFG% 條目中對高柏鎧的描述更正為「頂級禁區終結者（如高柏鎧）/ 高效外線終結點（如沃許本、迪亞洛）」，符合職業籃球技術定義。
+
+你可以在 Canvas 視窗中一鍵複製全文替換原有的 app.py，配合你已修正好 G01 比分（113 : 106）的 schedule.json 即可直接上線運行。
+
+我開左個新task/spark, 叫佢幫我全面check check仲有冇咩問題, 以上係佢搵到的和建議的修改, 你再對一對係咪可以咁改? (app.py係依家用緊的, app_sparkupdate.py係spark建議版本, txt係佢修改內容)
+
+你已停止此工作
+幫我按這個json格式, 生成一個TPBL 2026熱身賽的版本 (https://tpbl.basketball/schedule)
+
+我已依照相同的 JSON 規格，比對 TPBL 官方賽程與比賽紀錄，整理出 2026-27「開箱新十力」季前熱身賽全部 7 場賽事的完整資料。
+
+你可以直接點擊下載檔案 
+「JSON」圖示
+schedule_preseason2026
+ JSON 
+，或是直接複製下方的 JSON 內容：
+
+JSON
+[
+  {
+    "game_id": "G01",
+    "date": "2026.10.09",
+    "time": "14:30",
+    "away_team": "高雄全家海神",
+    "away_score": 133,
+    "home_team": "新北中信特攻",
+    "home_score": 136,
+    "sheet_name": "2026.10.09 G01 海神 vs 特攻",
+    "status": "FINAL (OT)"
+  },
+  {
+    "game_id": "G02",
+    "date": "2026.10.09",
+    "time": "17:00",
+    "away_team": "臺北台新戰神",
+    "away_score": 122,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 114,
+    "sheet_name": "2026.10.09 G02 戰神 vs 夢想家",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G03",
+    "date": "2026.10.10",
+    "time": "12:00",
+    "away_team": "桃園台啤永豐雲豹",
+    "away_score": 93,
+    "home_team": "新北國王",
+    "home_score": 107,
+    "sheet_name": "2026.10.10 G03 雲豹 vs 國王",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G04",
+    "date": "2026.10.10",
+    "time": "14:30",
+    "away_team": "新竹御嵿攻城獅",
+    "away_score": 110,
+    "home_team": "高雄全家海神",
+    "home_score": 134,
+    "sheet_name": "2026.10.10 G04 攻城獅 vs 海神",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G05",
+    "date": "2026.10.10",
+    "time": "17:00",
+    "away_team": "福爾摩沙夢想家",
+    "away_score": 97,
+    "home_team": "新北中信特攻",
+    "home_score": 92,
+    "sheet_name": "2026.10.10 G05 夢想家 vs 特攻",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G06",
+    "date": "2026.10.11",
+    "time": "12:00",
+    "away_team": "臺北台新戰神",
+    "away_score": 110,
+    "home_team": "桃園台啤永豐雲豹",
+    "home_score": 94,
+    "sheet_name": "2026.10.11 G06 戰神 vs 雲豹",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G07",
+    "date": "2026.10.11",
+    "time": "14:30",
+    "away_team": "新北國王",
+    "away_score": 100,
+    "home_team": "新竹御嵿攻城獅",
+    "home_score": 97,
+    "sheet_name": "2026.10.11 G07 國王 vs 攻城獅",
+    "status": "FINAL"
+  }
+]
+賽事實況與官方數據對照表
+本屆季前熱身賽於臺北和平籃球館舉行，7 支球隊各出賽 2 場，對戰紀錄均與官方紀錄核對一致：
+
+場次	日期與時間	客隊 (AWAY)	比分	主隊 (HOME)	比分	備註 / 賽果	官方紀錄連結
+G01	2026.10.09 14:30	高雄全家海神	133	新北中信特攻	136	延長賽決戰	GAME 1 官方 Box Score
+G02	2026.10.09 17:00	臺北台新戰神	122	福爾摩沙夢想家	114	常規時間終局	GAME 2 官方 Box Score
+G03	2026.10.10 12:00	桃園台啤永豐雲豹	93	新北國王	107	常規時間終局	GAME 3 官方 Box Score
+G04	2026.10.10 14:30	新竹御嵿攻城獅	110	高雄全家海神	134	常規時間終局	GAME 4 官方 Box Score
+G05	2026.10.10 17:00	福爾摩沙夢想家	97	新北中信特攻	92	常規時間終局	GAME 5 官方 Box Score
+G06	2026.10.11 12:00	臺北台新戰神	110	桃園台啤永豐雲豹	94	常規時間終局	GAME 6 官方 Box Score
+G07	2026.10.11 14:30	新北國王	100	新竹御嵿攻城獅	97	關鍵抄截險勝	GAME 7 官方 Box Score
+依據 app.py 的目錄對應設定，將此檔案命名為 schedule.json 並放置於 data/preseason2026/ 目錄下，切換至「🔥 2026-2027 季前熱身賽」時即可讀取對應覆盤數據。
+
+
+
+
+
+Gemini 是 AI，可能會出錯。
+
+
+完成
+[
+  {
+    "game_id": "G01",
+    "date": "2026.10.09",
+    "time": "14:30",
+    "away_team": "高雄全家海神",
+    "away_score": 133,
+    "home_team": "新北中信特攻",
+    "home_score": 136,
+    "sheet_name": "2026.10.09 G01 海神 vs 特攻",
+    "status": "FINAL (OT)"
+  },
+  {
+    "game_id": "G02",
+    "date": "2026.10.09",
+    "time": "17:00",
+    "away_team": "臺北台新戰神",
+    "away_score": 122,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 114,
+    "sheet_name": "2026.10.09 G02 戰神 vs 夢想家",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G03",
+    "date": "2026.10.10",
+    "time": "12:00",
+    "away_team": "桃園台啤永豐雲豹",
+    "away_score": 93,
+    "home_team": "新北國王",
+    "home_score": 107,
+    "sheet_name": "2026.10.10 G03 雲豹 vs 國王",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G04",
+    "date": "2026.10.10",
+    "time": "14:30",
+    "away_team": "新竹御嵿攻城獅",
+    "away_score": 110,
+    "home_team": "高雄全家海神",
+    "home_score": 134,
+    "sheet_name": "2026.10.10 G04 攻城獅 vs 海神",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G05",
+    "date": "2026.10.10",
+    "time": "17:00",
+    "away_team": "福爾摩沙夢想家",
+    "away_score": 97,
+    "home_team": "新北中信特攻",
+    "home_score": 92,
+    "sheet_name": "2026.10.10 G05 夢想家 vs 特攻",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G06",
+    "date": "2026.10.11",
+    "time": "12:00",
+    "away_team": "臺北台新戰神",
+    "away_score": 110,
+    "home_team": "桃園台啤永豐雲豹",
+    "home_score": 94,
+    "sheet_name": "2026.10.11 G06 戰神 vs 雲豹",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G07",
+    "date": "2026.10.11",
+    "time": "14:30",
+    "away_team": "新北國王",
+    "away_score": 100,
+    "home_team": "新竹御嵿攻城獅",
+    "home_score": 97,
+    "sheet_name": "2026.10.11 G07 國王 vs 攻城獅",
+    "status": "FINAL"
+  }
+]
+schedule_preseason2026.json
+正在顯示「schedule_preseason2026.json」。

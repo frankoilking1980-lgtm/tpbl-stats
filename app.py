@@ -379,20 +379,25 @@ st.markdown(
 # =========================================================================
 # 賽季階段切換開關 (Season Stage Selector) - 靠左對齊
 # =========================================================================
-stage_col1, _ = st.columns([1.2, 2])
-with stage_col1:
-    stage_selection = st.radio(
-        "選擇賽季階段",
-        ["🏆 2026-2027 例行賽", "🔥 2026-2027 季前熱身賽"],
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-    
-# 依選擇設定資料夾搜尋優先順序 (支援子資料夾與根目錄 fallback)
-if stage_selection == "🏆 2026-2027 例行賽":
-    active_dirs = ["data/season2026", "season2026", "."]
-else:
-    active_dirs = ["data/preseason2026", "preseason2026", "."]
+# =========================================================================
+# 賽季階段設定（暫時鎖定例行賽，對外隱藏切換按鈕）
+# =========================================================================
+stage_selection = "2026-2027 例行賽"
+active_dirs = ["data/season2026", "season2026", "."]
+
+# 如需重新開啟熱身賽切換，將下方註解解開即可：
+# stage_col1, _ = st.columns([1.2, 2])
+# with stage_col1:
+#     stage_selection = st.radio(
+#         "選擇賽季階段",
+#         ["🏆 2026-2027 例行賽", "🔥 2026-2027 季前熱身賽"],
+#         horizontal=True,
+#         label_visibility="collapsed"
+#     )
+# if stage_selection == "🏆 2026-2027 例行賽":
+#     active_dirs = ["data/season2026", "season2026", "."]
+# else:
+#     active_dirs = ["data/preseason2026", "preseason2026", "."]
 
 # =========================================================================
 # 頂部導航列 (Top Navigation Bar)

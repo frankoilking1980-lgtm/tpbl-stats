@@ -307,8 +307,7 @@ def parse_summary_sheet(filepath):
             block_b = deduplicate_columns(block_b.dropna(how='all', axis=1).dropna(how='all', axis=0))
 
     return block_a, block_b
-    
-# ----------------- 提取各隊專屬 PBP 表格 (相容直排與橫排) -----------------
+
 # ----------------- 提取各隊專屬 PBP 表格 (雙模智慧解析：相容例行賽縱向與熱身賽橫向) -----------------
 def extract_pbp_blocks(filepath):
     if not filepath or not os.path.exists(filepath):
@@ -489,7 +488,7 @@ def extract_pbp_blocks(filepath):
             blocks['duo'] = extract_horizontal_subtable(duo_c)
 
     return blocks, box_df
-    
+
 # ----------------- 取得球員母表數據 -----------------
 @st.cache_data(ttl=300)
 def get_master_players(candidate_dirs):
@@ -552,7 +551,7 @@ st.markdown(
     """
     <div style="text-align: center; margin-top: -30px; margin-bottom: 12px;">
         <h1 style="font-size: 2.2rem; margin-bottom: 6px; letter-spacing: 1px;">🏀 TPBL 職業籃球進階數據與球探分析系統</h1>
-        <p style="color: #9E9E9E; font-size: 1.05rem; margin: 0;">2026-2027 即時戰力、進階四要素、On/Off 陣容與球員效率象限</p>
+        <p style="color: #9E9E9E; font-size: 1.05rem; margin: 0;">即時戰力、進階四要素、On/Off 陣容與球員效率象限分析</p>
     </div>
     """,
     unsafe_allow_html=True
@@ -606,7 +605,28 @@ if nav_selection == MENU_SUMMARY:
         block_a, block_b = parse_summary_sheet(sum_file)
 
         st.markdown("#### 📊 團隊進階四要素指標 (Team Advanced Metrics)")
-        st.dataframe(block_a, use_container_width=True, hide_index=True)
+        if not block_a.empty:
+            df_display = block_a.copy()
+            # 若有「戰績」欄位，提取勝場數計算勝率以利正確排序
+            if '戰績' in df_display.columns:
+                def extract_win_pct(val):
+                    val_str = str(val).strip()
+                    m = re.search(r'(\d+)\s*勝', val_str)
+                    if m:
+                        wins = float(m.group(1))
+                        m_loss = re.search(r'(\d+)\s*敗', val_str)
+                        losses = float(m_loss.group(1)) if m_loss else 0.0
+                        tot = wins + losses
+                        return wins / tot if tot > 0 else 0.0
+                    return 0.0
+
+                df_display['_win_sort'] = df_display['戰績'].apply(extract_win_pct)
+                # 預設依勝率由大到小排序
+                df_display = df_display.sort_values(by='_win_sort', ascending=False).drop(columns=['_win_sort'])
+
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+        else:
+            st.dataframe(block_a, use_container_width=True, hide_index=True)
 
         if not block_b.empty:
             st.markdown("#### 🔍 重點球員洞察與教練體系戰力短評")
@@ -639,10 +659,20 @@ elif nav_selection == MENU_SCATTER:
 
     if not df_players.empty and '球員名' in df_players.columns:
         pts_col = '總得分' if '總得分' in df_players.columns else ('得分' if '得分' in df_players.columns else None)
+        games_col = '出賽' if '出賽' in df_players.columns else ('場次' if '場次' in df_players.columns else None)
         
-        for col in [pts_col, 'USG%', 'TS%', 'GmSc', 'EFF']:
+        for col in [pts_col, games_col, 'USG%', 'TS%', 'GmSc', 'EFF']:
             if col and col in df_players.columns:
                 df_players[col] = pd.to_numeric(df_players[col].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
+
+        # 計算場均得分 (PPG)，若無出賽場次則 fallback 回原始得分
+        if games_col and pts_col:
+            df_players['出賽數'] = df_players[games_col].replace(0, 1)
+            df_players['場均得分'] = (df_players[pts_col] / df_players['出賽數']).round(1)
+        elif pts_col:
+            df_players['場均得分'] = df_players[pts_col]
+        else:
+            df_players['場均得分'] = 0.0
 
         if 'USG%' in df_players.columns and df_players['USG%'].mean() > 0 and df_players['USG%'].mean() < 1.0:
             df_players['USG%'] = df_players['USG%'] * 100.0
@@ -651,15 +681,15 @@ elif nav_selection == MENU_SCATTER:
 
         c1, c2 = st.columns(2)
         with c1:
-            min_pts = st.slider("最低得分篩選 (PTS)", min_value=0, max_value=35, value=10)
+            # 改為場均得分 (PPG) 滑桿，預設 8.0 分，間隔 0.5 分
+            min_ppg = st.slider("最低場均得分篩選 (PPG)", min_value=0.0, max_value=30.0, value=8.0, step=0.5)
         with c2:
             id_col = '本土/洋將' if '本土/洋將' in df_players.columns else None
             id_options = ["全部"] + list(df_players[id_col].dropna().unique()) if id_col else ["全部"]
             selected_id = st.multiselect("球員身分篩選", id_options, default=["全部"])
 
         filtered = df_players.copy()
-        if pts_col:
-            filtered = filtered[filtered[pts_col] >= min_pts]
+        filtered = filtered[filtered['場均得分'] >= min_ppg]
         if id_col and "全部" not in selected_id:
             filtered = filtered[filtered[id_col].isin(selected_id)]
 
@@ -677,6 +707,7 @@ elif nav_selection == MENU_SCATTER:
                 text='簡稱',
                 hover_name='球員名',
                 hover_data={
+                    '場均得分': ':.1f',
                     pts_col: True,
                     'USG%': ':.1f',
                     'TS%': ':.1f',
@@ -763,7 +794,42 @@ elif nav_selection == MENU_PBP:
 
         st.markdown(f"#### 🤝 {selected_team} — 雙洋將化學效應矩陣")
         if 'duo' in blocks and not blocks['duo'].empty:
-            st.dataframe(blocks['duo'], use_container_width=True, hide_index=True)
+            df_duo = blocks['duo'].copy()
+            
+            # 1. 寬度拉大並支援橫向滾動
+            st.dataframe(
+                df_duo, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "攻守特徵與搭配建議": st.column_config.TextColumn(
+                        "攻守特徵與搭配建議",
+                        width="large"
+                    )
+                }
+            )
+
+            # 2. 自動提取評論，以自適應卡片完整展示文字（支援長文字自動換行）
+            comment_col = None
+            for c in df_duo.columns:
+                if any(k in str(c) for k in ['建議', '特徵', '短評', '分析', '備註']):
+                    comment_col = c
+                    break
+
+            if comment_col:
+                st.markdown("##### 💡 雙洋將戰術特徵與教練搭配洞察")
+                for _, d_row in df_duo.iterrows():
+                    duo_name = str(d_row.iloc[0]) if len(d_row) > 0 else "洋將組合"
+                    comment_txt = str(d_row.get(comment_col, "")).strip()
+                    if comment_txt and comment_txt != "nan" and comment_txt != "-":
+                        st.markdown(f"""
+                        <div style="background-color: rgba(255, 255, 255, 0.04); border-left: 4px solid #00E676; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;">
+                            <span style="font-weight: 700; color: #00E676; font-size: 1.02rem;">🤝 {duo_name}</span>
+                            <p style="margin: 6px 0 0 0; color: #E0E0E0; font-size: 0.95rem; line-height: 1.6; word-break: break-word;">
+                                {comment_txt}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
         else:
             st.info(f"💡 {selected_team} 暫無雙洋將搭配資料。")
 

@@ -941,17 +941,16 @@ elif nav_selection == MENU_CARD:
                 ftr_display = format_pct(p1_row.get('FTr', '0%'))
                 ast_to_display = get_ast_to_ratio(p1_row)
 
-                html_badges = f"""
-                <div style="background-color: rgba(255,255,255,0.03); padding: 16px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px;">
-                    {make_stat_badge_row("所屬隊伍", team_display)}
-                    {make_stat_badge_row("球衣背號 / 場上位置", f"#{num_display} / {pos_display}")}
-                    {make_stat_badge_row("球員身分類別", id_display)}
-                    {make_stat_badge_row("有效命中率 (eFG%)", efg_display)}
-                    {make_stat_badge_row("三分出手佔比 (3PAr)", tpar_display)}
-                    {make_stat_badge_row("買犯罰球比 (FTr)", ftr_display)}
-                    {make_stat_badge_row("助攻失誤比 (AST/TO)", ast_to_display)}
-                </div>
-                """
+                rows_html = "".join([
+                    make_stat_badge_row("所屬隊伍", team_display),
+                    make_stat_badge_row("球衣背號 / 場上位置", f"#{num_display} / {pos_display}"),
+                    make_stat_badge_row("球員身分類別", id_display),
+                    make_stat_badge_row("有效命中率 (eFG%)", efg_display),
+                    make_stat_badge_row("三分出手佔比 (3PAr)", tpar_display),
+                    make_stat_badge_row("買犯罰球比 (FTr)", ftr_display),
+                    make_stat_badge_row("助攻失誤比 (AST/TO)", ast_to_display)
+                ])
+                html_badges = f'<div style="background-color: rgba(255,255,255,0.03); padding: 16px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px;">{rows_html}</div>'
                 st.markdown(html_badges, unsafe_allow_html=True)
 
                 note_val = p1_row.get('備註/短評', p1_row.get('備註 / 例行賽表現重點', p1_row.get('備註 / 熱身賽表現重點', '暫無備註')))

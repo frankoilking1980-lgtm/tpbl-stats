@@ -121,7 +121,7 @@ else:
     <style>
     .stApp { background-color: #0E1117 !important; color: #FFFFFF !important; }
     h1, h2, h3, h4, h5, h6, p, span, label { color: #FFFFFF !important; }
-    div[data-testid="stRadio"] > div { background: rgba(255, 255, 255, 0.03) !important; border: 1px solid rgba(255, 255, 255, 0.08) !important; }
+    div[data-testid="stRadio"] > div { background: rgba(255, 255, 203, 0.03) !important; border: 1px solid rgba(255, 255, 255, 0.08) !important; }
     div[data-testid="stRadio"] label[data-baseweb="radio"] { background-color: rgba(255, 255, 255, 0.05) !important; border: 1px solid rgba(255, 255, 255, 0.08) !important; }
     div[data-testid="stRadio"] label[data-baseweb="radio"] p { color: #FFFFFF !important; }
     @media (min-width: 768px) {
@@ -355,7 +355,7 @@ def split_lineup_and_pairs(df_lineup):
     df_pairs = df_pairs.dropna(subset=[col0]).dropna(how='all', axis=1)
     return df_5man, df_pairs
 
-# ----------------- 精確單場工作表抽取器 (排除「團隊總計 / X名球員」) -----------------
+# ----------------- 精確單場工作表抽取器 -----------------
 def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
     if not filepath or not os.path.exists(filepath):
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
@@ -433,7 +433,6 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
             if not c1 or c1 == "nan":
                 break
                 
-            # 同時檢查第0與第1欄，排除團隊總計
             row_identity = f"{c0} {c1}"
             if any(k in row_identity for k in ['合計', '總計', 'TEAM', '團隊', 'Team', '名球員', '全隊']):
                 continue
@@ -663,8 +662,7 @@ def extract_pbp_blocks(filepath):
                 valid_cols_idx.append(idx_h)
             box_df = df.iloc[box_header_row + 1 : end_box, valid_cols_idx].copy()
             box_df.columns = [raw_headers[i] for i in valid_cols_idx]
-            box_df = clean_dataframe_times(box_df)
-            box_df = deduplicate_columns(box_df.dropna(how='all', axis=0))
+            box_df = clean_dataframe_times(deduplicate_columns(box_df))
         else:
             box_df = pd.DataFrame()
     else:
@@ -700,8 +698,8 @@ def extract_pbp_blocks(filepath):
                     break
                 data.append([df.iloc[r, ci] for ci in col_idxs])
             res = pd.DataFrame(data, columns=cols)
-            res = clean_dataframe_times(res)
-            return deduplicate_columns(res)
+            res = clean_dataframe_times(deduplicate_columns(res))
+            return res
 
         box_df = extract_horizontal_subtable(0)
 
@@ -738,7 +736,7 @@ def extract_pbp_blocks(filepath):
 
     return blocks, box_df
 
-# ----------------- 取得球員母表數據 -----------------
+# ----------------- 取得球員母表數據 (加入 deduplicate 防止 concat 崩潰) -----------------
 @st.cache_data(ttl=300)
 def get_master_players(candidate_dirs):
     f_master = find_file_in_folders(candidate_dirs, "進階數據與戰力評級總表")
@@ -765,7 +763,7 @@ def get_master_players(candidate_dirs):
     all_team_dfs = []
     teams = ["福爾摩沙夢想家", "新北國王", "高雄全家海神", "新北中信特攻", "臺北台新戰神", "桃園台啤永豐雲豹", "新竹御嵿攻城獅"]
     for t_name in teams:
-        tf = find_team_file_in_folders(candidate_dirs, t_name)
+        tf = find_team_file_in_folders(candidate_dirs, team_name=t_name)
         if tf:
             try:
                 xls = pd.ExcelFile(tf)
@@ -785,7 +783,11 @@ def get_master_players(candidate_dirs):
                     if header_idx is not None:
                         t_df = raw_adv.iloc[header_idx + 1:].copy()
                         t_df.columns = [str(x).strip() for x in raw_adv.iloc[header_idx].tolist()]
-                        t_df = t_df.dropna(subset=['球員名', '出賽'])
+                        t_df = deduplicate_columns(t_df)
+                        if '球員名' in t_df.columns:
+                            t_df = t_df.dropna(subset=['球員名'])
+                            if '出賽' in t_df.columns:
+                                t_df = t_df.dropna(subset=['出賽'])
                         if '球隊' not in t_df.columns or t_df['球隊'].isna().all():
                             t_df['球隊'] = t_name
                         all_team_dfs.append(t_df)
@@ -1101,7 +1103,6 @@ elif nav_selection == MENU_GAME:
         away_score = int(cur_game.get('away_score', 0))
         home_score = int(cur_game.get('home_score', 0))
         
-        # 兼容路徑 A：若 JSON 指定了客隊或主隊個別的 Sheet 名稱則優先讀取，否則回退到共用的 sheet_name
         away_sheet = cur_game.get('away_sheet') or cur_game.get('sheet_name', '')
         home_sheet = cur_game.get('home_sheet') or cur_game.get('sheet_name', '')
         cur_game_id = cur_game.get('game_id', '')
@@ -1110,11 +1111,9 @@ elif nav_selection == MENU_GAME:
         away_file = find_team_file_in_folders(active_dirs, away_team)
         home_file = find_team_file_in_folders(active_dirs, home_team)
 
-        # 優先抽取數據，以利自動比分校準
         box_away, onoff_away, lineup_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, away_sheet, cur_game_id, cur_game_date)
         box_home, onoff_home, lineup_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, home_sheet, cur_game_id, cur_game_date)
 
-        # 比分智慧校準：若單場球員得分加總大於 0，自動校準覆蓋可能之筆誤
         if stats_away.get('得分', 0) > 0:
             away_score = int(stats_away['得分'])
         if stats_home.get('得分', 0) > 0:
@@ -1126,7 +1125,6 @@ elif nav_selection == MENU_GAME:
         team_a_official = team_color_map.get(away_team, "#00E676")
         team_h_official = team_color_map.get(home_team, "#00E676")
 
-        # 頂部賽事記分板橫幅
         st.markdown(f"""
         <div style="background: {card_bg}; border: 1px solid {card_border}; border-radius: 14px; padding: 22px 16px; margin: 12px 0 24px 0;">
             <div style="display: flex; justify-content: space-between; align-items: center; text-align: center;">
@@ -1255,7 +1253,7 @@ elif nav_selection == MENU_GAME:
                     if not pairs_home.empty:
                         st.dataframe(pairs_home, use_container_width=True, hide_index=True)
                     else:
-                        st.info(f"💡 {home_team} 本場暫無雙人搭檔統計。")
+                        st.info(f"💡 {home_team} 本場暫重雙人搭檔統計。")
 
             st.markdown("#### 📋 兩隊球員單場進階攻守數據 (Single-Game Box Score)")
             pinned_box_config = {

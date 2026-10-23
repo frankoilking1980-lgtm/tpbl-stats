@@ -154,7 +154,7 @@ else:
     """
 st.markdown(theme_css, unsafe_allow_html=True)
 
-# ----------------- 全域 UI 色彩與容器變數（避免跨分頁 NameError） -----------------
+# ----------------- 全域 UI 色彩與容器變數 -----------------
 card_bg = "rgba(0, 0, 0, 0.03)" if is_light else "rgba(255, 255, 255, 0.03)"
 card_border = "rgba(0, 0, 0, 0.1)" if is_light else "rgba(255, 255, 255, 0.1)"
 card_box_bg = "rgba(0, 0, 0, 0.02)" if is_light else "rgba(255, 255, 255, 0.03)"
@@ -433,7 +433,7 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
             if not c1 or c1 == "nan":
                 break
                 
-            # 同時檢查背號 (第0欄) 與球員名 (第1欄)，徹底排除「團隊總計 / 14名球員」等統計列
+            # 同時檢查第0與第1欄，排除團隊總計
             row_identity = f"{c0} {c1}"
             if any(k in row_identity for k in ['合計', '總計', 'TEAM', '團隊', 'Team', '名球員', '全隊']):
                 continue
@@ -635,8 +635,8 @@ def extract_pbp_blocks(filepath):
                     break
                 data_rows.append([df.iloc[cur_r, col_idx] for col_idx in col_indices])
             res = pd.DataFrame(data_rows, columns=headers)
-            res = clean_dataframe_times(res)
-            return deduplicate_columns(res)
+            res = clean_dataframe_times(deduplicate_columns(res))
+            return res
 
         if r_onoff is not None:
             blocks['on_off'] = extract_vertical_subtable(r_onoff, c_onoff)
@@ -1100,18 +1100,21 @@ elif nav_selection == MENU_GAME:
         home_team = cur_game.get('home_team', '')
         away_score = int(cur_game.get('away_score', 0))
         home_score = int(cur_game.get('home_score', 0))
-        sheet_name = cur_game.get('sheet_name', '')
+        
+        # 兼容路徑 A：若 JSON 指定了客隊或主隊個別的 Sheet 名稱則優先讀取，否則回退到共用的 sheet_name
+        away_sheet = cur_game.get('away_sheet') or cur_game.get('sheet_name', '')
+        home_sheet = cur_game.get('home_sheet') or cur_game.get('sheet_name', '')
         cur_game_id = cur_game.get('game_id', '')
         cur_game_date = cur_game.get('date', '')
 
         away_file = find_team_file_in_folders(active_dirs, away_team)
         home_file = find_team_file_in_folders(active_dirs, home_team)
 
-        # 優先抽取數據
-        box_away, onoff_away, lineup_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, sheet_name, cur_game_id, cur_game_date)
-        box_home, onoff_home, lineup_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, sheet_name, cur_game_id, cur_game_date)
+        # 優先抽取數據，以利自動比分校準
+        box_away, onoff_away, lineup_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, away_sheet, cur_game_id, cur_game_date)
+        box_home, onoff_home, lineup_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, home_sheet, cur_game_id, cur_game_date)
 
-        # 比分校準：若單場球員得分加總大於 0，自動校準覆蓋 schedule.json 的可能筆誤
+        # 比分智慧校準：若單場球員得分加總大於 0，自動校準覆蓋可能之筆誤
         if stats_away.get('得分', 0) > 0:
             away_score = int(stats_away['得分'])
         if stats_home.get('得分', 0) > 0:
@@ -1147,7 +1150,7 @@ elif nav_selection == MENU_GAME:
         """, unsafe_allow_html=True)
 
         if box_away.empty and box_home.empty:
-            st.warning(f"⚠️ 找不到該場次的工作表（請確認各隊 Excel 中是否包含名稱為 `{sheet_name}` 的工作表）。")
+            st.warning(f"⚠️ 找不到該場次的工作表（請確認各隊 Excel 中是否包含對應工作表）。")
         else:
             st.caption(f"🔍 數據來源工作表核對 ｜ 客隊：`{matched_away_sheet}` ｜ 主隊：`{matched_home_sheet}`")
 

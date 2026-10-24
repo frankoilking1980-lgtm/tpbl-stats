@@ -737,6 +737,7 @@ def extract_pbp_blocks(filepath):
     return blocks, box_df
 
 # ----------------- 取得球員母表數據 (加入 deduplicate 防止 concat 崩潰) -----------------
+# ----------------- 取得球員母表數據 (自動合併進階與平均數據表) -----------------
 @st.cache_data(ttl=300)
 def get_master_players(candidate_dirs):
     f_master = find_file_in_folders(candidate_dirs, "進階數據與戰力評級總表")
@@ -767,11 +768,9 @@ def get_master_players(candidate_dirs):
         if tf:
             try:
                 xls = pd.ExcelFile(tf)
-                target_sheet = None
-                for s in xls.sheet_names:
-                    if "進階" in s:
-                        target_sheet = s
-                        break
+                target_sheet = next((s for s in xls.sheet_names if "進階" in s), None)
+                avg_sheet = next((s for s in xls.sheet_names if "平均" in s), None)
+                
                 if target_sheet:
                     raw_adv = pd.read_excel(tf, sheet_name=target_sheet, header=None)
                     header_idx = None
@@ -785,11 +784,39 @@ def get_master_players(candidate_dirs):
                         t_df.columns = [str(x).strip() for x in raw_adv.iloc[header_idx].tolist()]
                         t_df = deduplicate_columns(t_df)
                         if '球員名' in t_df.columns:
-                            t_df = t_df.dropna(subset=['球員名'])
+                            t_df['球員名'] = t_df['球員名'].astype(str).str.strip()
+                            t_df = t_df[t_df['球員名'] != 'nan'].dropna(subset=['球員名'])
                             if '出賽' in t_df.columns:
                                 t_df = t_df.dropna(subset=['出賽'])
                         if '球隊' not in t_df.columns or t_df['球隊'].isna().all():
                             t_df['球隊'] = t_name
+
+                        # 同步讀取「平均數據」工作表，補齊籃板、助攻、抄截、阻攻與球探備註
+                        if avg_sheet:
+                            raw_avg = pd.read_excel(tf, sheet_name=avg_sheet, header=None)
+                            h_avg_idx = None
+                            for r in range(min(6, len(raw_avg))):
+                                r_vals = [str(x).strip() for x in raw_avg.iloc[r].dropna().tolist()]
+                                if "球員名" in r_vals and ("出賽" in r_vals or "背號" in r_vals):
+                                    h_avg_idx = r
+                                    break
+                            if h_avg_idx is not None:
+                                avg_cols, avg_c_idxs = [], []
+                                for c_i, h_val in enumerate(raw_avg.iloc[h_avg_idx].tolist()):
+                                    h_str = str(h_val).strip()
+                                    if not h_str or h_str == "nan" or h_str.startswith("Unnamed"):
+                                        break
+                                    avg_cols.append(h_str)
+                                    avg_c_idxs.append(c_i)
+                                avg_df = raw_avg.iloc[h_avg_idx + 1:, avg_c_idxs].copy()
+                                avg_df.columns = avg_cols
+                                avg_df = deduplicate_columns(avg_df)
+                                if '球員名' in avg_df.columns:
+                                    avg_df['球員名'] = avg_df['球員名'].astype(str).str.strip()
+                                    avg_df = avg_df.dropna(subset=['球員名']).drop_duplicates(subset=['球員名'])
+                                    missing_cols = ['球員名'] + [c for c in avg_df.columns if c not in t_df.columns]
+                                    t_df = pd.merge(t_df, avg_df[missing_cols], on='球員名', how='left')
+
                         all_team_dfs.append(t_df)
             except Exception:
                 continue
@@ -825,25 +852,22 @@ def calculate_radar_scores(row):
         ts = 50.0
     score_eff = min(99, max(15, ((ts - 40.0) / 32.0) * 85 + 14))
 
-    games = float(pd.to_numeric(str(row.get('出賽', row.get('場次', 1))), errors='coerce') or 1.0)
-    games = 1.0 if games <= 0 else games
-
-    tpm = float(pd.to_numeric(str(row.get('三分命中', 0)).replace('%', ''), errors='coerce') or 0.0) / games
+    # 平均表與進階表內的數值皆已為「場均數據」，直接換算能力值（不重複除以出賽場次）
+    tpm = float(pd.to_numeric(str(row.get('三分命中', 0)).replace('%', ''), errors='coerce') or 0.0)
     score_3p = min(99, max(15, (tpm / 3.5) * 85 + 14))
 
-    ast = float(pd.to_numeric(str(row.get('助攻', 0)).replace('%', ''), errors='coerce') or 0.0) / games
+    ast = float(pd.to_numeric(str(row.get('助攻', 0)).replace('%', ''), errors='coerce') or 0.0)
     score_ast = min(99, max(15, (ast / 6.0) * 85 + 14))
 
-    reb = float(pd.to_numeric(str(row.get('籃板', 0)).replace('%', ''), errors='coerce') or 0.0) / games
+    reb = float(pd.to_numeric(str(row.get('籃板', 0)).replace('%', ''), errors='coerce') or 0.0)
     score_reb = min(99, max(15, (reb / 12.0) * 85 + 14))
 
     stl = float(pd.to_numeric(str(row.get('抄截', 0)).replace('%', ''), errors='coerce') or 0.0)
     blk = float(pd.to_numeric(str(row.get('阻攻', 0)).replace('%', ''), errors='coerce') or 0.0)
-    stocks = (stl + blk) / games
+    stocks = stl + blk
     score_def = min(99, max(15, (stocks / 3.5) * 85 + 14))
 
     return [round(score_pts, 1), round(score_eff, 1), round(score_3p, 1), round(score_ast, 1), round(score_reb, 1), round(score_def, 1)]
-
 # =========================================================================
 # 頁首橫幅
 # =========================================================================

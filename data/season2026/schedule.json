@@ -20,5 +20,27 @@
     "home_score": 115,
     "sheet_name": "2026.10.18 G02 海神 vs 夢想家",
     "status": "FINAL"
+  },
+  {
+    "game_id": "G05",
+    "date": "2026.10.25",
+    "time": "14:30",
+    "away_team": "高雄全家海神",
+    "away_score": 132,
+    "home_team": "新竹御嵿攻城獅",
+    "home_score": 129,
+    "sheet_name": "2026.10.25 G05 海神 vs 攻城獅",
+    "status": "FINAL (2OT)"
+  },
+  {
+    "game_id": "G06",
+    "date": "2026.10.25",
+    "time": "17:00",
+    "away_team": "新北國王",
+    "away_score": 89,
+    "home_team": "新北中信特攻",
+    "home_score": 81,
+    "sheet_name": "2026.10.25 G06 國王 vs 中信特攻",
+    "status": "FINAL"
   }
 ]

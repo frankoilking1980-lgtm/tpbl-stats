@@ -355,10 +355,10 @@ def split_lineup_and_pairs(df_lineup):
     df_pairs = df_pairs.dropna(subset=[col0]).dropna(how='all', axis=1)
     return df_5man, df_pairs
 
-# ----------------- 精確單場工作表抽取器 -----------------
+# ----------------- 精確單場工作表抽取器 (已整合 WOWY 與單場欄位過濾) -----------------
 def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
     if not filepath or not os.path.exists(filepath):
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
     try:
         xls = pd.ExcelFile(filepath)
         all_sheets = xls.sheet_names
@@ -401,7 +401,7 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
                     break
 
         if not matched_sheet:
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
 
         df = pd.read_excel(filepath, sheet_name=matched_sheet, header=None)
         
@@ -413,9 +413,9 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
                 break
                 
         if header_r is None:
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, matched_sheet
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, matched_sheet
 
-        # 1. Box score
+        # 1. 抽取單場 Box score 並過濾不必要顯示的欄位
         box_cols = []
         box_col_idxs = []
         for c in range(0, min(36, len(df.columns))):
@@ -442,7 +442,12 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
         box_df = pd.DataFrame(box_rows, columns=box_cols)
         box_df = clean_dataframe_times(deduplicate_columns(box_df))
 
-        # 2. 提取右側陣容與 On/Off 表
+        # 過濾單場不需顯示之欄位（在台年資、出賽、投籃熱區、備註）
+        drop_keywords = ['在台年資', '出賽', '投籃熱區', '表現重點', '備註']
+        keep_cols = [c for c in box_df.columns if not any(k in c for k in drop_keywords)]
+        box_df = box_df[keep_cols]
+
+        # 2. 提取右側陣容、On/Off 表與對位交鋒 (WOWY) 表
         def extract_sub(start_c):
             if start_c is None or start_c >= len(df.columns):
                 return pd.DataFrame()
@@ -465,20 +470,24 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
             res = pd.DataFrame(data, columns=cols)
             return clean_dataframe_times(deduplicate_columns(res))
 
-        onoff_c = None
-        lineup_c = None
+        onoff_c, lineup_c, wowy_c = None, None, None
         start_scan = max(box_col_idxs) + 1 if box_col_idxs else 16
         for c in range(start_scan, len(df.columns)):
             val_r2 = str(df.iloc[header_r - 1, c]).strip() if header_r > 0 else ""
             val_r3 = str(df.iloc[header_r, c]).strip()
             if "On/Off" in val_r2 or "on/off" in val_r3.lower() or ("在場時間" in val_r3 and onoff_c is None):
-                onoff_c = c if val_r3 in ["球員名", "球員"] else (c-1 if df.iloc[header_r, c-1] in ["球員名", "球員"] else c)
+                if onoff_c is None:
+                    onoff_c = c if val_r3 in ["球員名", "球員"] else (c-1 if df.iloc[header_r, c-1] in ["球員名", "球員"] else c)
             if "陣容" in val_r2 or "陣容" in val_r3:
                 if lineup_c is None:
                     lineup_c = c
+            if any(k in val_r2 for k in ["對位", "WOWY", "交鋒"]) or any(k in val_r3 for k in ["對位", "WOWY", "交鋒"]):
+                if wowy_c is None:
+                    wowy_c = c
 
         onoff_df = extract_sub(onoff_c) if onoff_c else pd.DataFrame()
         lineup_df = extract_sub(lineup_c) if lineup_c else pd.DataFrame()
+        wowy_df = extract_sub(wowy_c) if wowy_c else pd.DataFrame()
 
         # 3. 累加團隊統計
         team_stats = {}
@@ -510,9 +519,9 @@ def extract_single_game_data(filepath, sheet_name, game_id="", game_date=""):
         if team_stats.get('防守籃板', 0.0) == 0.0 and team_stats.get('籃板', 0.0) > 0 and team_stats.get('進攻籃板', 0.0) > 0:
             team_stats['防守籃板'] = max(0.0, team_stats['籃板'] - team_stats['進攻籃板'])
 
-        return box_df, onoff_df, lineup_df, team_stats, matched_sheet
+        return box_df, onoff_df, lineup_df, wowy_df, team_stats, matched_sheet
     except Exception:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, ""
 
 # ----------------- 總表拆解解析 -----------------
 def parse_summary_sheet(filepath):
@@ -736,7 +745,6 @@ def extract_pbp_blocks(filepath):
 
     return blocks, box_df
 
-# ----------------- 取得球員母表數據 (加入 deduplicate 防止 concat 崩潰) -----------------
 # ----------------- 取得球員母表數據 (自動合併進階與平均數據表) -----------------
 @st.cache_data(ttl=300)
 def get_master_players(candidate_dirs):
@@ -852,7 +860,6 @@ def calculate_radar_scores(row):
         ts = 50.0
     score_eff = min(99, max(15, ((ts - 40.0) / 32.0) * 85 + 14))
 
-    # 平均表與進階表內的數值皆已為「場均數據」，直接換算能力值（不重複除以出賽場次）
     tpm = float(pd.to_numeric(str(row.get('三分命中', 0)).replace('%', ''), errors='coerce') or 0.0)
     score_3p = min(99, max(15, (tpm / 3.5) * 85 + 14))
 
@@ -868,6 +875,7 @@ def calculate_radar_scores(row):
     score_def = min(99, max(15, (stocks / 3.5) * 85 + 14))
 
     return [round(score_pts, 1), round(score_eff, 1), round(score_3p, 1), round(score_ast, 1), round(score_reb, 1), round(score_def, 1)]
+
 # =========================================================================
 # 頁首橫幅
 # =========================================================================
@@ -933,6 +941,12 @@ if nav_selection == MENU_SUMMARY:
 
                 df_display['_win_sort'] = df_display['戰績'].apply(extract_win_pct)
                 df_display = df_display.sort_values(by='_win_sort', ascending=False).drop(columns=['_win_sort'])
+
+            # 防呆修正：自動將 0.423 等小數格式化為 42.3% 百分比顯示
+            pct_cols = ['團隊命中率%', '團隊三分出手比 (Team 3PAr)', '團隊有效命中率 (Team eFG%)', '團隊失誤率 (Team TOV%)']
+            for c in pct_cols:
+                if c in df_display.columns:
+                    df_display[c] = df_display[c].apply(format_pct)
 
             st.dataframe(df_display, use_container_width=True, hide_index=True)
         else:
@@ -1005,10 +1019,16 @@ elif nav_selection == MENU_SCATTER:
         else:
             df_players['場均得分'] = 0.0
 
-        if 'USG%' in df_players.columns and df_players['USG%'].mean() > 0 and df_players['USG%'].mean() < 1.0:
-            df_players['USG%'] = df_players['USG%'] * 100.0
-        if 'TS%' in df_players.columns and df_players['TS%'].mean() > 0 and df_players['TS%'].mean() < 1.0:
-            df_players['TS%'] = df_players['TS%'] * 100.0
+        # 針對每位球員獨立防呆校正，若以小數存入（如 0.25）自動轉換為 25.0
+        def fix_pct_val(val):
+            if val <= 0: return 0.0
+            if val <= 1.0: return round(val * 100.0, 1)
+            return round(val, 1)
+
+        if 'USG%' in df_players.columns:
+            df_players['USG%'] = df_players['USG%'].apply(fix_pct_val)
+        if 'TS%' in df_players.columns:
+            df_players['TS%'] = df_players['TS%'].apply(fix_pct_val)
 
         c1, c2 = st.columns(2)
         with c1:
@@ -1135,8 +1155,8 @@ elif nav_selection == MENU_GAME:
         away_file = find_team_file_in_folders(active_dirs, away_team)
         home_file = find_team_file_in_folders(active_dirs, home_team)
 
-        box_away, onoff_away, lineup_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, away_sheet, cur_game_id, cur_game_date)
-        box_home, onoff_home, lineup_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, home_sheet, cur_game_id, cur_game_date)
+        box_away, onoff_away, lineup_away, wowy_away, stats_away, matched_away_sheet = extract_single_game_data(away_file, away_sheet, cur_game_id, cur_game_date)
+        box_home, onoff_home, lineup_home, wowy_home, stats_home, matched_home_sheet = extract_single_game_data(home_file, home_sheet, cur_game_id, cur_game_date)
 
         if stats_away.get('得分', 0) > 0:
             away_score = int(stats_away['得分'])
@@ -1278,6 +1298,23 @@ elif nav_selection == MENU_GAME:
                         st.dataframe(pairs_home, use_container_width=True, hide_index=True)
                     else:
                         st.info(f"💡 {home_team} 本場暫重雙人搭檔統計。")
+
+            # 渲染單場關鍵焦點對位與戰術交鋒 (WOWY)
+            if not wowy_away.empty or not wowy_home.empty:
+                st.markdown("#### 🎯 單場關鍵焦點對位與戰術交鋒 (WOWY)")
+                col_w_a, col_w_h = st.columns(2)
+                with col_w_a:
+                    st.markdown(f"**客隊：{away_team} 焦點對位**")
+                    if not wowy_away.empty:
+                        st.dataframe(wowy_away, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"💡 {away_team} 本場暫無對位分析。")
+                with col_w_h:
+                    st.markdown(f"**主隊：{home_team} 焦點對位**")
+                    if not wowy_home.empty:
+                        st.dataframe(wowy_home, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"💡 {home_team} 本場暫無對位分析。")
 
             st.markdown("#### 📋 兩隊球員單場進階攻守數據 (Single-Game Box Score)")
             pinned_box_config = {

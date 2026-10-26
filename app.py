@@ -56,7 +56,8 @@ stage_mapping = {
     "🏆 2026-2027 例行賽": ["data/season2026", "season2026", "."],
     "📜 2025-2026 例行賽": ["data/season2025", "season2025", "."],
     "⚔️ 2025-2026 季後挑戰賽": ["data/playin2025", "playin2025", "."],
-    "⚔️ 2025-2026 季後賽": ["data/playoff2025", "playoff2025", "."]
+    "⚔️ 2025-2026 季後賽": ["data/playoff2025", "playoff2025", "."],
+    "🏆 2025-2026 冠軍賽": ["data/final20252026", "final20252026", "."]
 }
 
 col_sel_season, col_sel_theme, _ = st.columns([1.3, 0.9, 2])

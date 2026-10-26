@@ -1,0 +1,24 @@
+[
+  {
+    "game_id": "G02",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "新北中信特攻",
+    "away_score": 86,
+    "home_team": "新北國王",
+    "home_score": 102,
+    "sheet_name": "2025.10.19 G02 中信特攻 vs 國王",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G03",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "新北國王",
+    "away_score": 96,
+    "home_team": "新北中信特攻",
+    "home_score": 90,
+    "sheet_name": "2025.10.19 G03 國王 vs 中信特攻",
+    "status": "FINAL"
+  }
+]

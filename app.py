@@ -55,7 +55,7 @@ stage_mapping = {
     "🔥 2026-2027 季前熱身賽": ["data/preseason2026", "preseason2026", "."],
     "🏆 2026-2027 例行賽": ["data/season2026", "season2026", "."],
     "📜 2025-2026 例行賽": ["data/season2025", "season2025", "."],
-    "⚔️ 2025-2026 季後挑戰賽": ["data/playin2025", "playin2025", "."]
+    "⚔️ 2025-2026 季後挑戰賽": ["data/playin2025", "playin2025", "."],
     "⚔️ 2025-2026 季後賽": ["data/playoff2025", "playoff2025", "."]
 }
 

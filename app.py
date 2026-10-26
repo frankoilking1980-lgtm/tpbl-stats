@@ -1307,15 +1307,17 @@ elif nav_selection == MENU_GAME:
                 st.markdown("#### 🎯 單場關鍵焦點對位與戰術交鋒 (WOWY)")
                 col_w_a, col_w_h = st.columns(2)
                 with col_w_a:
-                    st.markdown(f"**客隊：{away_team} 焦點對位**")
+                    st.markdown(f"**客隊: {away_team} 焦點對位**")
                     if not wowy_away.empty:
-                        st.dataframe(wowy_away, use_container_width=True, hide_index=True)
+                        # 將對位情境項目設為索引，排版會更乾淨；或直接傳入 wowy_away
+                        st.table(wowy_away.set_index(wowy_away.columns[0]))
                     else:
                         st.info(f"💡 {away_team} 本場暫無對位分析。")
+
                 with col_w_h:
-                    st.markdown(f"**主隊：{home_team} 焦點對位**")
+                    st.markdown(f"**主隊: {home_team} 焦點對位**")
                     if not wowy_home.empty:
-                        st.dataframe(wowy_home, use_container_width=True, hide_index=True)
+                        st.table(wowy_home.set_index(wowy_home.columns[0]))
                     else:
                         st.info(f"💡 {home_team} 本場暫無對位分析。")
 

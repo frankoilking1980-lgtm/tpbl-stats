@@ -1,0 +1,79 @@
+[
+  {
+    "game_id": "G01",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "新北國王",
+    "away_score": 91,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 90,
+    "sheet_name": "2025.10.19 G01 國王 vs 夢想家",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G02",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "新北國王",
+    "away_score": 90,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 99,
+    "sheet_name": "2025.10.19 G02 國王 vs 夢想家",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G03",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "福爾摩沙夢想家",
+    "away_score": 84,
+    "home_team": "新北國王",
+    "home_score": 109,
+    "sheet_name": "2025.10.19 G03 夢想家 vs 國王",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G04",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "福爾摩沙夢想家",
+    "away_score": 93,
+    "home_team": "新北國王",
+    "home_score": 96,
+    "sheet_name": "2025.10.19 G04 夢想家 vs 國王",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G05",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "新北國王",
+    "away_score": 69,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 105,
+    "sheet_name": "2025.10.19 G05 國王 vs 夢想家",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G06",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "福爾摩沙夢想家",
+    "away_score": 91,
+    "home_team": "新北國王",
+    "home_score": 88,
+    "sheet_name": "2025.10.19 G06 夢想家 vs 國王",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G07",
+    "date": "2025.10.19",
+    "time": "17:00",
+    "away_team": "新北國王",
+    "away_score": 78,
+    "home_team": "福爾摩沙夢想家",
+    "home_score": 90,
+    "sheet_name": "2025.10.19 G07 國王 vs 夢想家",
+    "status": "FINAL"
+  }
+]

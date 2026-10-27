@@ -53,11 +53,12 @@ st.markdown(base_style, unsafe_allow_html=True)
 # ----------------- 賽季階段與外觀主題切換列 -----------------
 stage_mapping = {
     "🔥 2026-2027 季前熱身賽": ["data/preseason2026", "preseason2026", "."],
-    "🏆 2026-2027 例行賽": ["data/season2026", "season2026", "."],
+    "📜 2026-2027 例行賽": ["data/season2026", "season2026", "."],
     "📜 2025-2026 例行賽": ["data/season2025", "season2025", "."],
     "⚔️ 2025-2026 季後挑戰賽": ["data/playin2025", "playin2025", "."],
     "⚔️ 2025-2026 季後賽": ["data/playoff2025", "playoff2025", "."],
-    "🏆 2025-2026 冠軍賽": ["data/final20252026", "final20252026", "."]
+    "🏆 2025-2026 冠軍賽": ["data/final20252026", "final20252026", "."],
+    "📜 2024-2025 例行賽": ["data/season2024", "season2024", "."]
 }
 
 col_sel_season, col_sel_theme, _ = st.columns([1.3, 0.9, 2])

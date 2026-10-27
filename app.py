@@ -167,15 +167,38 @@ text_sub_c = "#777777" if is_light else "#888888"
 
 # ----------------- 工具函式 -----------------
 def clean_time_display(val):
-    if pd.isna(val):
+    if pd.isna(val) or val is None or str(val).strip() == "" or str(val).strip() == "nan":
         return ""
+    
+    # 1. 處理 datetime / Timestamp (Excel 自動將 > 24 小時的時間轉為 1900 年日期)
+    if isinstance(val, (datetime.datetime, pd.Timestamp)):
+        days = val.day  # 1900-01-01 是第 1 天 (24h)，1900-01-02 是第 2 天 (48h)
+        hours = days * 24 + val.hour if days > 0 else val.hour
+        return f"{hours}:{val.minute:02d}"
+
+    # 2. 處理 time 物件 (未滿 24 小時的時間)
+    if isinstance(val, datetime.time):
+        return f"{val.hour:02d}:{val.minute:02d}"
+
+    # 3. 處理 timedelta
     if isinstance(val, (pd.Timedelta, datetime.timedelta)):
         tot_sec = int(val.total_seconds())
         if tot_sec < 3600:
             return f"{tot_sec // 60:02d}:{tot_sec % 60:02d}"
         else:
             return f"{tot_sec // 3600:02d}:{(tot_sec % 3600) // 60:02d}"
+
     val_str = str(val).strip()
+
+    # 4. 處理字串形式的 1900 日期 (例如 "1900-01-02 22:15:00")
+    m_dt_str = re.match(r'^1900-01-(\d{2})\s+(\d{1,2}):(\d{2})(?::\d{2})?', val_str)
+    if m_dt_str:
+        days = int(m_dt_str.group(1))
+        hours = int(m_dt_str.group(2))
+        mins = int(m_dt_str.group(3))
+        orig_hours = days * 24 + hours
+        return f"{orig_hours}:{mins:02d}"
+
     m_day = re.match(r'(\d+)\s*days?,?\s*(\d+):(\d+)(?::(\d+))?', val_str)
     if m_day:
         days = int(m_day.group(1))
@@ -184,15 +207,19 @@ def clean_time_display(val):
         orig_mins = days * 24 + hours
         orig_secs = mins
         return f"{orig_mins:02d}:{orig_secs:02d}"
+        
     m_pt = re.match(r'PT(\d+)H(\d+)M', val_str)
     if m_pt:
         return f"{int(m_pt.group(1)):02d}:{int(m_pt.group(2)):02d}"
+        
     m_hms = re.match(r'^00:(\d+):(\d+)$', val_str)
     if m_hms:
         return f"{int(m_hms.group(1)):02d}:{int(m_hms.group(2)):02d}"
+        
     m_hms2 = re.match(r'^(\d+):(\d+):00$', val_str)
     if m_hms2:
         return f"{int(m_hms2.group(1)):02d}:{int(m_hms2.group(2)):02d}"
+        
     return val_str
 
 def format_pct(val):
@@ -1300,16 +1327,15 @@ elif nav_selection == MENU_GAME:
                     if not pairs_home.empty:
                         st.dataframe(pairs_home, use_container_width=True, hide_index=True)
                     else:
-                        st.info(f"💡 {home_team} 本場暫重雙人搭檔統計。")
+                        st.info(f"💡 {home_team} 本場暫無雙人搭檔統計。")
 
-            # 渲染單場關鍵焦點對位與戰術交鋒 (WOWY)
+            # 渲染單場關鍵焦點對位與戰術交鋒 (WOWY) - 改為 st.table 達到自動折行效果
             if not wowy_away.empty or not wowy_home.empty:
                 st.markdown("#### 🎯 單場關鍵焦點對位與戰術交鋒 (WOWY)")
                 col_w_a, col_w_h = st.columns(2)
                 with col_w_a:
                     st.markdown(f"**客隊: {away_team} 焦點對位**")
                     if not wowy_away.empty:
-                        # 將對位情境項目設為索引，排版會更乾淨；或直接傳入 wowy_away
                         st.table(wowy_away.set_index(wowy_away.columns[0]))
                     else:
                         st.info(f"💡 {away_team} 本場暫無對位分析。")
@@ -1371,7 +1397,8 @@ elif nav_selection == MENU_PBP:
 
         st.markdown(f"#### 🤝 {selected_team} — 雙洋將化學效應矩陣")
         if 'duo' in blocks and not blocks['duo'].empty:
-            df_duo = blocks['duo'].copy()
+            # 確保進行時間清洗 (防止 Excel 超過24小時自動進位為 1900 年日期)
+            df_duo = clean_dataframe_times(blocks['duo'].copy())
             headers = list(df_duo.columns)
             
             table_border_c = "rgba(0,0,0,0.1)" if is_light else "rgba(255,255,255,0.08)"

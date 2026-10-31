@@ -42,5 +42,27 @@
     "home_score": 81,
     "sheet_name": "2026.10.25 G06 國王 vs 中信特攻",
     "status": "FINAL"
+  },
+  {
+    "game_id": "G07",
+    "date": "2026-10-31",
+    "time": "17:00",
+    "away_team": "桃園台啤永豐雲豹",
+    "away_score": 89,
+    "home_team": "新北國王",
+    "home_score": 81,
+    "sheet_name": "2026-10-31 G07 雲豹 vs 國王",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G08",
+    "date": "2026-10-31",
+    "time": "17:00",
+    "away_team": "臺北台新戰神",
+    "away_score": 121,
+    "home_team": "高雄全家海神",
+    "home_score": 132,
+    "sheet_name": "2026-10-31 G08 戰神 vs 海神",
+    "status": "FINAL"
   }
 ]

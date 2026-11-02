@@ -64,5 +64,27 @@
     "home_score": 132,
     "sheet_name": "2026-10-31 G08 戰神 vs 海神",
     "status": "FINAL"
+  },
+  {
+    "game_id": "G09",
+    "date": "2026-11-01",
+    "time": "14:30",
+    "away_team": "新竹御嵿攻城獅",
+    "away_score": 95,
+    "home_team": "新北國王",
+    "home_score": 93,
+    "sheet_name": "2026-11-01 27550 攻城獅 vs 國王",
+    "status": "FINAL"
+  },
+  {
+    "game_id": "G10",
+    "date": "2026-11-01",
+    "time": "17:00",
+    "away_team": "新北中信特攻",
+    "away_score": 128,
+    "home_team": "高雄全家海神",
+    "home_score": 100,
+    "sheet_name": "2026-11-01 27551 中信特攻 vs 海神",
+    "status": "FINAL"
   }
 ]
